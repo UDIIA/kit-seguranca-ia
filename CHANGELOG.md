@@ -43,3 +43,10 @@ correção do Node.js de 21/10).
 - `sonda-do-site`: hospedagem antiga esquecida. `vazou-e-agora`: chaves de automação (n8n, Evolution API, Supabase).
 - `PROMPTS.md`: pedido "Saiu notícia de ataque novo"; o "Sem terminal" pergunta de hospedagem antiga, automação e
   sessões abertas.
+
+### Teste de instalação pela URL (22/10/2026)
+
+- Em teste com Claude Code headless (Sonnet 5.5) numa pasta de usuário limpa, o agente lia os scripts mas copiava
+  direto, sem mostrar o resumo. O `INSTALAR.md` passou a terminar a primeira resposta no resumo de cada script e em
+  "Posso instalar?", sem copiar nada nessa resposta; o relatório final ganhou ordem fixa; no Windows o caminho das
+  regras vai no formato `C:/...`.
