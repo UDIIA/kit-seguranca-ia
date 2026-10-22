@@ -51,6 +51,12 @@ mk(path.join(isca, '.env'), 'X=1\n');
 spawnSync('git', ['init', '-q', isca], { windowsHide: true });
 // 7. trava do bun "ligada" com zero, que não espera nada
 mk(path.join(casa, '.bunfig.toml'), '[install]\nminimumReleaseAge = 0\n');
+// 8. chave SSH sem senha com nome próprio (não id_*), ao lado do config e do known_hosts, que não contam
+const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
+const chaveSsh = Buffer.concat([Buffer.from('openssh-key-v1\0'), u32(4), Buffer.from('none'), u32(4), Buffer.from('none'), crypto.randomBytes(60)]).toString('base64');
+mk(path.join(casa, '.ssh', 'deploy_vps'), `-----BEGIN OPENSSH PRIVATE KEY-----\n${chaveSsh}\n-----END OPENSSH PRIVATE KEY-----\n`);
+mk(path.join(casa, '.ssh', 'config'), 'Host vps\n  IdentityFile ~/.ssh/deploy_vps\n');
+mk(path.join(casa, '.ssh', 'known_hosts'), '');
 
 const env = { ...process.env, HOME: casa, USERPROFILE: casa, TEMP: tmp, TMP: tmp, TMPDIR: tmp, APPDATA: path.join(casa, 'AppData', 'Roaming') };
 const r = spawnSync(process.execPath, [CHECKUP, '--tempo', '40'], { env, cwd: casa, encoding: 'utf8', windowsHide: true, timeout: 120000 });
@@ -103,6 +109,7 @@ const casos = [
   ['acusa chave Anthropic no histórico', /chave\(s\) Anthropic em texto no histórico/],
   ['acusa chave Google no histórico', /chave\(s\) Google .* em texto no histórico/],
   ['acusa certifi velho', /certifi antigo/],
+  ['acusa chave SSH sem senha com nome próprio', /1 de 1 chave\(s\) SSH sem senha/],
   ['NÃO imprime a chave Anthropic', (s) => !s.includes(chaveA) && !s.includes(chaveA.slice(0, 30))],
   ['NÃO imprime a chave Google', (s) => !s.includes(chaveG) && !s.includes(chaveG.slice(0, 15))],
 ];

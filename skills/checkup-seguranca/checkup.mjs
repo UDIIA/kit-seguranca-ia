@@ -284,8 +284,9 @@ const emRisco = [];
   const ssh = P('.ssh');
   if (existe(ssh)) {
     let semSenha = 0, total = 0;
+    // Toda chave conta, não só id_*: chave com nome próprio (deploy, vps, assinatura) é comum e abre servidor igual.
     for (const n of fs.readdirSync(ssh)) {
-      if (!/^id_/.test(n) || n.endsWith('.pub')) continue;
+      if (n.endsWith('.pub') || /^(known_hosts|config|authorized_keys|environment)/.test(n)) continue;
       const t = lerInicio(path.join(ssh, n), 4096);
       if (!/PRIVATE KEY/.test(t)) continue;
       total++;
@@ -296,7 +297,7 @@ const emRisco = [];
         try { const len = bin.readUInt32BE(off); if (bin.subarray(off + 4, off + 4 + len).toString() === 'none') semSenha++; } catch { /* formato inesperado: não conta */ }
       } else if (!/ENCRYPTED/.test(t)) semSenha++;
     }
-    if (total) { emRisco.push(['Chaves SSH', ssh]); if (semSenha) add('atencao', 'Chaves em arquivo', `${semSenha} de ${total} chave(s) SSH sem senha`, 'Chave SSH sem senha funciona na mão de quem copiar o arquivo.', 'Ponha senha: `ssh-keygen -p -f ~/.ssh/<arquivo>`.'); }
+    if (total) { emRisco.push(['Chaves SSH', ssh]); if (semSenha) add('atencao', 'Chaves em arquivo', `${semSenha} de ${total} chave(s) SSH sem senha`, 'Chave SSH sem senha funciona na mão de quem copiar o arquivo.', 'Ponha senha com `ssh-keygen -p -f ~/.ssh/<arquivo>` e registre a chave com `ssh-add ~/.ssh/<arquivo>` pra não digitar a senha a cada conexão (no Windows, o serviço "OpenSSH Authentication Agent" precisa estar ligado). Chave que um robô usa sem ninguém olhando (assinatura automática, rotina agendada) para de funcionar com senha: essa fica sem, serve só pra aquele uso e é a primeira a trocar se a máquina for invadida.'); }
   }
   if (emRisco.length) add('info', 'Chaves em arquivo', `${emRisco.length} arquivo(s) com credencial nesta máquina (o que um ladrão de credencial levaria)`, emRisco.map(([r, p]) => `${r}: ${curto(p)}`).join('; '), 'Nada a fazer se a máquina está limpa. Se algum item URGENTE apareceu acima, cada um desses vira uma chave pra trocar.');
 }

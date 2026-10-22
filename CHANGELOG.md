@@ -53,3 +53,6 @@ correção do Node.js de 21/10).
 - `idade-pacote` entende faixa (`npm@11`, `npm@11.21`) e etiqueta (`next-11`): mostra a versão exata e a mais nova da
   faixa com 7 dias ou mais. O conserto do npm no checkup e na skill manda instalar a versão que ele indicar; no
   Windows o npm novo vai pra pasta do usuário e o atalho do Node passa a usá-lo, sem administrador.
+- O checkup conta toda chave SSH sem senha em `~/.ssh`, não só as que começam com `id_` (chave com nome próprio abre
+  servidor igual), e explica o que fazer com chave que um robô usa sem ninguém olhando. Teste novo: 24 casos.
+  Revisão: Gemini, aprovado; a sugestão de mostrar o `ssh-add` entrou.
