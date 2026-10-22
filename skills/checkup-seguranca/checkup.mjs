@@ -25,9 +25,13 @@ const add = (nivel, area, titulo, detalhe = '', conserto = '') => achados.push({
 
 // ---------- utilidades ----------
 // Programa e argumentos vão separados, sem shell: nome de pasta com aspas, & ou $(...) não vira comando.
+// Roda a partir da pasta temporária (um npm.cmd plantado na pasta atual não é achado antes do PATH) e com o Corepack
+// proibido de baixar gerenciador de pacote (a promessa é zero acesso de rede).
+const AMBIENTE = { ...process.env, NoDefaultCurrentDirectoryInExePath: '1', COREPACK_ENABLE_NETWORK: '0', COREPACK_ENABLE_DOWNLOAD_PROMPT: '0', COREPACK_ENABLE_STRICT: '0' };
+const BASE = { windowsHide: true, encoding: 'utf8', cwd: os.tmpdir(), env: AMBIENTE };
 function run(bin, argv = [], { timeout = 15000, input } = {}) {
   try {
-    const r = spawnSync(bin, argv, { shell: false, windowsHide: true, timeout, encoding: 'utf8', input, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
+    const r = spawnSync(bin, argv, { ...BASE, shell: false, timeout, input, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
     return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim(), code: r.status };
   } catch { return { ok: false, out: '', err: '', code: -1 }; }
 }
@@ -36,15 +40,18 @@ function run(bin, argv = [], { timeout = 15000, input } = {}) {
 function runFixo(cmd, timeout = 15000) {
   if (!WIN) { const [b, ...a] = cmd.split(' '); return run(b, a, { timeout }); }
   try {
-    const r = spawnSync(cmd, { shell: true, windowsHide: true, timeout, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const r = spawnSync(cmd, { ...BASE, shell: true, timeout, stdio: ['ignore', 'pipe', 'pipe'] });
     return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim(), code: r.status };
   } catch { return { ok: false, out: '', err: '', code: -1 }; }
 }
+// "pnpm config get" responde "undefined" (com sucesso) quando a chave não existe.
+const valorCfg = (s) => (/^(undefined|null)?$/.test((s || '').trim()) ? '' : s.trim());
+const versao = (s) => ((s || '').match(/\d+\.\d+\.\d+/) || ['0.0.0'])[0];
 // Duração escrita como "7 days", "1 week", "168h" → dias (uv). Data fixa ou formato desconhecido → null.
 const diasDe = (t) => { const m = /^\s*(\d+(?:\.\d+)?)\s*(d|days?|w|weeks?|h|hours?)\s*$/i.exec(t || ''); if (!m) return null; const n = Number(m[1]); return /^w/i.test(m[2]) ? n * 7 : /^h/i.test(m[2]) ? n / 24 : n; };
 const cmp = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; };
 const existe = (p) => { try { fs.accessSync(p); return true; } catch { return false; } };
-const curto = (p) => p.startsWith(HOME) ? '~' + p.slice(HOME.length) : p;
+const curto = (p) => (WIN ? p.toLowerCase().startsWith(HOME.toLowerCase()) : p.startsWith(HOME)) ? '~' + p.slice(HOME.length) : p;
 const lerInicio = (p, n = 65536) => { try { const fd = fs.openSync(p, 'r'); const b = Buffer.alloc(n); const k = fs.readSync(fd, b, 0, n, 0); fs.closeSync(fd); return b.subarray(0, k).toString('utf8'); } catch { return ''; } };
 const restante = () => TEMPO_TOTAL - (Date.now() - inicio);
 
@@ -76,25 +83,31 @@ const NODE_MIN = { 22: '22.23.4', 24: '24.22.1', 26: '26.12.1' };
   const pnpm = runFixo('pnpm --version');
   if (pnpm.ok) {
     const v = pnpm.out.split(/\s/)[0];
-    const age = runFixo('pnpm config get minimumReleaseAge').out || runFixo('pnpm config get minimum-release-age').out;
-    if (cmp(v, '10.16.0') < 0) add('atencao', 'Pacotes', `pnpm ${v} não tem trava de idade (ela chegou no pnpm 10.16)`, '', 'Atualize o pnpm e ligue `minimumReleaseAge: 10080` (minutos, 7 dias) na config global.');
+    const age = valorCfg(runFixo('pnpm config get minimumReleaseAge').out) || valorCfg(runFixo('pnpm config get minimum-release-age').out);
+    const conserto = 'Rode `pnpm config set --global minimum-release-age 10080` (minutos, 7 dias).';
+    if (cmp(v, '10.16.0') < 0) add('atencao', 'Pacotes', `pnpm ${v} não tem trava de idade (ela chegou no pnpm 10.16)`, '', `Atualize o pnpm. ${conserto}`);
     else if (/^\d+$/.test(age) && Number(age) >= 1440) add('ok', 'Pacotes', `pnpm ${v} espera ${Math.round(Number(age) / 1440)} dia(s) antes de instalar versão nova`);
-    else add('atencao', 'Pacotes', `pnpm ${v} sem trava de idade de pelo menos 1 dia`, '', 'Ligue `minimumReleaseAge: 10080` (minutos, 7 dias) na config global do pnpm.');
+    else add('atencao', 'Pacotes', `pnpm ${v} sem trava de idade de pelo menos 1 dia`, age ? `minimum-release-age está em ${age} minuto(s).` : '', conserto);
   }
   const uv = runFixo('uv --version');
   if (uv.ok) {
+    const v = versao(uv.out);
     const cfgs = WIN ? [path.join(process.env.APPDATA || '', 'uv', 'uv.toml')] : [path.join(process.env.XDG_CONFIG_HOME || path.join(HOME, '.config'), 'uv', 'uv.toml')];
     const valor = cfgs.map((c) => (lerInicio(c).match(/^\s*exclude-newer\s*=\s*["']([^"']+)["']/m) || [])[1]).find(Boolean);
     const dias = diasDe(valor);
-    if (dias !== null && dias >= 1) add('ok', 'Pacotes', `${uv.out} espera ${dias} dia(s) antes de instalar versão nova`);
-    else if (valor && dias === null) add('info', 'Pacotes', `${uv.out} tem exclude-newer com data fixa (${valor})`, 'Data fixa congela tudo naquela data; nem correção de segurança entra.', 'Troque por `exclude-newer = "7 days"`.');
-    else add('atencao', 'Pacotes', `${uv.out} instala versão publicada há minutos`, valor ? `exclude-newer está em "${valor}".` : '', `Ponha em ${curto(cfgs[0])} a linha \`exclude-newer = "7 days"\` (uv 0.9.17 ou mais novo).`);
+    if (cmp(v, '0.9.17') < 0) add('atencao', 'Pacotes', `uv ${v} não entende espera em dias (ela chegou no uv 0.9.17)`, '', `Atualize o uv (\`uv self update\`) e ponha em ${curto(cfgs[0])} a linha \`exclude-newer = "7 days"\`.`);
+    else if (dias !== null && dias >= 1) add('ok', 'Pacotes', `uv ${v} espera ${dias} dia(s) antes de instalar versão nova`);
+    else if (valor && dias === null) add('info', 'Pacotes', `uv ${v} tem exclude-newer com data fixa (${valor})`, 'Data fixa congela tudo naquela data; nem correção de segurança entra.', 'Troque por `exclude-newer = "7 days"`.');
+    else add('atencao', 'Pacotes', `uv ${v} instala versão publicada há minutos`, valor ? `exclude-newer está em "${valor}".` : '', `Ponha em ${curto(cfgs[0])} a linha \`exclude-newer = "7 days"\`.`);
   }
   const bun = runFixo('bun --version');
   if (bun.ok) {
-    const seg = Number((lerInicio(path.join(HOME, '.bunfig.toml')).match(/^\s*minimumReleaseAge\s*=\s*(\d+)/m) || [])[1] || 0);
-    if (seg >= 86400) add('ok', 'Pacotes', `bun ${bun.out} espera ${Math.round(seg / 86400)} dia(s) antes de instalar versão nova`);
-    else add('atencao', 'Pacotes', `bun ${bun.out} sem trava de idade de pelo menos 1 dia`, seg ? `minimumReleaseAge está em ${seg} segundos.` : '', 'No ~/.bunfig.toml: `[install]` e embaixo `minimumReleaseAge = 604800` (segundos, 7 dias).');
+    const v = versao(bun.out);
+    const seg = Number(((lerInicio(path.join(HOME, '.bunfig.toml')).match(/^\s*minimumReleaseAge\s*=\s*([\d_]+)/m) || [])[1] || '0').replace(/_/g, ''));
+    const conserto = 'No ~/.bunfig.toml: `[install]` e embaixo `minimumReleaseAge = 604800` (segundos, 7 dias).';
+    if (cmp(v, '1.3.0') < 0) add('atencao', 'Pacotes', `bun ${v} não tem trava de idade (ela chegou no bun 1.3)`, '', `Atualize o bun (\`bun upgrade\`). ${conserto}`);
+    else if (seg >= 86400) add('ok', 'Pacotes', `bun ${v} espera ${Math.round(seg / 86400)} dia(s) antes de instalar versão nova`);
+    else add('atencao', 'Pacotes', `bun ${v} sem trava de idade de pelo menos 1 dia`, seg ? `minimumReleaseAge está em ${seg} segundos.` : '', conserto);
   }
 }
 
@@ -102,7 +115,9 @@ const NODE_MIN = { 22: '22.23.4', 24: '24.22.1', 26: '26.12.1' };
 // O Python roda com -S -I e lê a sonda pela entrada padrão (nenhum arquivo temporário que outro usuário troque): não
 // carrega site-packages, então cook.pth e sitecustomize.py não disparam por causa deste checkup. Limite honesto: numa
 // máquina já comprometida, nada que rode nela prova que ela está limpa; este checkup procura as marcas conhecidas.
-const sitePackages = new Set();
+// Mesmo ambiente achado por dois caminhos (Python e varredura) entra uma vez só; no Windows, sem diferença de caixa.
+const sitePackagesMapa = new Map();
+const sitePackages = { add: (p) => { const n = path.normalize(p); const k = WIN ? n.toLowerCase() : n; if (!sitePackagesMapa.has(k)) sitePackagesMapa.set(k, n); }, [Symbol.iterator]: () => sitePackagesMapa.values() };
 {
   const sonda = [
     'import sys, sysconfig, json, os',
@@ -111,7 +126,7 @@ const sitePackages = new Set();
     '    for k in ("purelib", "platlib"):',
     '        try:',
     '            x = sysconfig.get_path(k, s)',
-    '            if x and os.path.isdir(x): p.add(os.path.normcase(os.path.abspath(x)))',
+    '            if x and os.path.isdir(x): p.add(os.path.abspath(x))',
     '        except Exception: pass',
     'print(json.dumps({"v": sys.version.split()[0], "exe": sys.executable, "paths": sorted(p)}))',
   ].join('\n') + '\n';
@@ -134,10 +149,19 @@ const sitePackages = new Set();
 // ---------- 4. Varredura de pastas: ambientes virtuais (site-packages) e arquivos .env ----------
 const envs = [];
 {
-  // OneDrive, Dropbox e iCloud entram: muita gente guarda projeto ali. Listar pasta não baixa arquivo da nuvem.
+  // OneDrive e Dropbox entram: muita gente guarda projeto ali. Listar pasta não baixa arquivo da nuvem.
+  // AppData e Library ficam de fora da descida (enormes), mas os lugares de ambiente Python e o iCloud dentro deles
+  // entram como ponto de partida próprio.
   const PULA = new Set(['node_modules', '.git', 'AppData', 'Library', '.cache', '.npm', '.cargo', '.rustup', '.gradle', '.m2', 'Windows', 'Program Files', 'Program Files (x86)', '$Recycle.Bin', '.Trash', 'snap', 'Applications', '.vscode', '.cursor', '.nvm', 'go', '.docker']);
+  const OCULTAS_OK = ['.venv', '.env', '.config', '.local', '.pyenv', '.conda', '.virtualenvs', '.direnv', '.tox', '.nox', '.hatch'];
+  const LA = process.env.LOCALAPPDATA || path.join(HOME, 'AppData', 'Local');
+  const extras = [
+    path.join(HOME, 'Library', 'Mobile Documents', 'com~apple~CloudDocs'), path.join(HOME, 'Library', 'Caches', 'pypoetry', 'virtualenvs'),
+    path.join(HOME, 'Library', 'Application Support', 'pipx', 'venvs'), path.join(HOME, '.local', 'share', 'uv'), path.join(HOME, '.local', 'share', 'pipx'),
+    path.join(HOME, '.local', 'pipx', 'venvs'), path.join(LA, 'uv'), path.join(LA, 'pypoetry'), path.join(LA, 'pipx'),
+  ].filter((p) => p !== RAIZ && existe(p));
   const limite = Date.now() + Math.min(30000, restante() / 3);
-  const fila = [[RAIZ, 0]];
+  const fila = [[RAIZ, 0], ...extras.map((p) => [p, 1])];
   let cortou = false;
   while (fila.length) {
     if (Date.now() > limite) { cortou = true; break; }
@@ -147,9 +171,9 @@ const envs = [];
     for (const it of itens) {
       const p = path.join(dir, it.name);
       if (it.isDirectory() && !it.isSymbolicLink()) {
-        if (it.name === 'site-packages') { sitePackages.add(path.normalize(p)); continue; }
-        if (PULA.has(it.name) || (it.name.startsWith('.') && prof > 0 && !['.venv', '.env', '.config', '.local'].includes(it.name))) continue;
-        if (prof < 6) fila.push([p, prof + 1]);
+        if (it.name === 'site-packages' || it.name === 'dist-packages') { sitePackages.add(p); continue; }
+        if (PULA.has(it.name) || (it.name.startsWith('.') && prof > 0 && !OCULTAS_OK.includes(it.name))) continue;
+        if (prof < 9) fila.push([p, prof + 1]);
       } else if (it.isFile() && /^\.env(\..+)?$/i.test(it.name) && !/\.(example|sample|template|dist|defaults?|schema|enc|age|gpg|asc|vault|yarn)$/i.test(it.name)) envs.push(p);
     }
   }
@@ -161,16 +185,15 @@ const envs = [];
   for (const sp of sitePackages) {
     let nomes;
     try { nomes = fs.readdirSync(sp); } catch { continue; }
-    // dist-info (pip moderno) e egg-info (instalação antiga); versão com sufixo local (1.107.0+algo) também conta.
-    const lite = nomes.find((n) => /^litellm-\d[^-]*(?:-py[\d.]+)?\.(?:dist|egg)-info$/i.test(n));
-    if (lite) {
+    // Todas as entradas do LiteLLM na pasta (resto de versão antiga pode estar ao lado da nova): dist-info (pip
+    // moderno), egg-info e .egg (instalação antiga), com ou sem versão no nome; vale a versão escrita no METADATA.
+    const lites = nomes.filter((n) => /^litellm(?:-\d[^/\\]*)?\.(?:dist-info|egg-info|egg)$/i.test(n));
+    for (const lite of lites) {
       litellmVisto = true;
-      let v = (lite.match(/^litellm-(\d+(?:\.\d+)*)/i) || [])[1] || '?';
-      const meta = lerInicio(path.join(sp, lite, 'METADATA'), 4096) || lerInicio(path.join(sp, lite, 'PKG-INFO'), 4096) || lerInicio(path.join(sp, lite), 4096);
-      const vm = (meta.match(/^Version:\s*(\d+(?:\.\d+)*)/m) || [])[1];
-      const envenenada = (x) => x === '1.107.0';
-      if (vm && envenenada(vm)) v = vm;
-      if (envenenada(v)) add('urgente', 'Pacote envenenado', `LiteLLM 1.107.0 instalado em ${curto(sp)}`, 'Essa é a versão que roubava senha do navegador, chave SSH, chave de nuvem e de IA, e baixava código novo a cada hora.', 'Siga a skill vazou-e-agora AGORA: troque todas as chaves deste computador, depois `pip install "litellm!=1.107.0"` ou remova o ambiente. Ver docs.litellm.ai/blog/security-incident-oct-21-2026.');
+      const meta = ['METADATA', 'PKG-INFO', path.join('EGG-INFO', 'PKG-INFO'), ''].map((f) => lerInicio(path.join(sp, lite, f), 4096)).find(Boolean) || '';
+      const v = (meta.match(/^Version:\s*(\d+(?:\.\d+)*)/m) || [])[1] || (lite.match(/^litellm-(\d+(?:\.\d+)*)/i) || [])[1] || '?';
+      // 1.107.0: ataque de 21/10/2026. 1.82.7 e 1.82.8: o mesmo pacote foi atacado assim em março de 2026.
+      if (['1.107.0', '1.82.7', '1.82.8'].includes(v)) add('urgente', 'Pacote envenenado', `LiteLLM ${v} instalado em ${curto(sp)}`, v === '1.107.0' ? 'Essa é a versão que roubava senha do navegador, chave SSH, chave de nuvem e de IA, e baixava código novo a cada hora.' : 'Essa versão saiu com código malicioso no ataque de março de 2026 ao LiteLLM.', 'Siga a skill vazou-e-agora AGORA: troque todas as chaves deste computador, depois `pip install "litellm!=1.107.0,!=1.82.7,!=1.82.8"` ou recrie o ambiente do projeto. Ver docs.litellm.ai/blog/security-incident-oct-21-2026.');
       else add('ok', 'Pacote envenenado', `LiteLLM ${v} em ${curto(sp)} (versão fora do ataque de 21/10)`);
     }
     for (const f of ['cook.pth', 'cook.py']) if (nomes.includes(f)) add('urgente', 'Pacote envenenado', `Arquivo do vírus do LiteLLM (${f}) em ${curto(sp)}`, 'Esse arquivo roda sozinho toda vez que o Python abre.', 'Assuma que as chaves desta máquina foram levadas: skill vazou-e-agora. Depois apague o ambiente inteiro e recrie.');
@@ -179,7 +202,7 @@ const envs = [];
     if (cert && !/[\\/]pkgs[\\/]/.test(sp)) { const v = cert.replace(/^certifi-/i, '').replace(/\.dist-info$/i, ''); if (cmp(v, '2026.10.19') < 0) certifiVelhos.push(`${v} em ${curto(sp)}`); }
   }
   if (!litellmVisto) add('ok', 'Pacote envenenado', 'LiteLLM não encontrado nos Pythons e ambientes varridos');
-  if (certifiVelhos.length) add('atencao', 'Certificados', `certifi antigo em ${certifiVelhos.length} lugar(es)`, `Lista de certificados de antes de 19/10/2026 ainda confia em certificados revogados. ${certifiVelhos.slice(0, 3).join('; ')}${certifiVelhos.length > 3 ? '…' : ''}`, 'Em cada ambiente: `pip install -U certifi` (ou `uv pip install -U certifi`).');
+  if (certifiVelhos.length) add('atencao', 'Certificados', `certifi antigo em ${certifiVelhos.length} lugar(es)`, `certifi anterior à 2026.10.19 ainda confia nos 8 certificados intermediários revogados da eMudhra. ${certifiVelhos.slice(0, 3).join('; ')}${certifiVelhos.length > 3 ? '…' : ''}`, 'Em cada ambiente: `pip install -U certifi` (ou `uv pip install -U certifi`).');
 }
 
 // ---------- 5. Marcas que o vírus deixa na pasta temporária ----------
@@ -202,7 +225,9 @@ const envs = [];
     const lite = r.out.split(/\r?\n/).filter((l) => /litellm/i.test(l));
     for (const l of lite) {
       const [img, quando] = l.split('|');
-      if (/:v?1\.107\.0\b/.test(img) || (/:(latest|main-latest|main-stable)$/.test(img) && /^2026-10-21/.test(quando || ''))) add('urgente', 'Pacote envenenado', `Imagem Docker suspeita: ${img}`, 'As imagens do LiteLLM 1.107.0 (e latest/main-latest/main-stable baixadas em 21/10) vieram com o vírus.', 'Pare os containers dessa imagem, apague a imagem, troque as chaves que ela usava (skill vazou-e-agora).');
+      // Qualquer imagem do LiteLLM criada em 21/10, inclusive a que perdeu a tag (<none>) depois de outra baixar por cima.
+      if (/:v?1\.107\.0\b/.test(img)) add('urgente', 'Pacote envenenado', `Imagem Docker do LiteLLM 1.107.0: ${img}`, 'As imagens do LiteLLM 1.107.0 vieram com o vírus.', 'Pare os containers dessa imagem, apague a imagem, troque as chaves que ela usava (skill vazou-e-agora).');
+      else if (/^2026-10-21/.test(quando || '')) add('atencao', 'Pacote envenenado', `Imagem Docker do LiteLLM criada em 21/10, dia do ataque: ${img}`, 'Nesse dia as tags latest, main-latest e main-stable apontaram por algumas horas pra versão com vírus.', 'Não rode essa imagem pra conferir. Apague (`docker rmi <imagem>`) e baixe de novo por uma versão fixa e conferida; se algum container dela rodou com chave, siga a skill vazou-e-agora.');
       else add('info', 'Docker', `Imagem do LiteLLM: ${img} (fora da janela do ataque)`);
     }
   }
@@ -276,20 +301,30 @@ const emRisco = [];
 // ---------- 9. Arquivos .env: versionados no git? ----------
 {
   const raizGit = (p) => { let d = path.dirname(p); for (let i = 0; i < 12; i++) { if (existe(path.join(d, '.git'))) return d; const up = path.dirname(d); if (up === d) break; d = up; } return null; };
-  let versionados = 0, foraIgnore = 0;
+  let versionados = 0, foraIgnore = 0, semResposta = 0, conferidos = 0;
   const exemplos = [];
-  for (const e of envs.slice(0, 60)) {
+  const MAX_ENVS = 200;
+  for (const e of envs.slice(0, MAX_ENVS)) {
     const g = raizGit(e);
     if (!g) continue;
+    conferidos++;
     const rel = path.relative(g, e).split(path.sep).join('/');
     // core.fsmonitor desligado: a config de um repositório baixado da internet não roda programa nenhum aqui.
     const git = (...a) => run('git', ['-c', 'core.fsmonitor=false', '-C', g, ...a]);
-    if (git('ls-files', '--error-unmatch', '--', rel).ok) { versionados++; exemplos.push(curto(e)); }
-    else if (!git('check-ignore', '-q', '--', rel).ok) foraIgnore++;
+    // ls-files: 0 = versionado, 1 = não está no git; check-ignore: 0 = ignorado, 1 = não ignorado. Outro código
+    // (git ausente, repositório de outro usuário) é "não deu pra conferir", nunca "fora do .gitignore".
+    const ls = git('ls-files', '--error-unmatch', '--', rel);
+    if (ls.code === 0) { versionados++; exemplos.push(curto(e)); continue; }
+    if (ls.code !== 1) { semResposta++; continue; }
+    const ci = git('check-ignore', '-q', '--', rel);
+    if (ci.code === 1) foraIgnore++;
+    else if (ci.code !== 0) semResposta++;
   }
-  if (versionados) add('urgente', 'Chaves em arquivo', `${versionados} arquivo(s) .env dentro do git (versionados)`, `Se esse repositório já subiu pro GitHub, as chaves estão no histórico dele. ${exemplos.slice(0, 3).join('; ')}`, 'Troque as chaves desses arquivos (skill vazou-e-agora), depois `git rm --cached <arquivo>` e ponha `.env*` no .gitignore. Apagar o arquivo não apaga o histórico; trocar a chave resolve.');
-  if (foraIgnore) add('atencao', 'Chaves em arquivo', `${foraIgnore} arquivo(s) .env em repositório git sem estar no .gitignore`, 'Um `git add .` distraído manda a chave pro repositório.', 'Adicione `.env*` e `!.env.example` no .gitignore desses repositórios.');
-  if (envs.length && !versionados && !foraIgnore) add('ok', 'Chaves em arquivo', `${envs.length} arquivo(s) .env encontrados, nenhum versionado no git`);
+  if (versionados) add('urgente', 'Chaves em arquivo', `${versionados} arquivo(s) .env dentro do git (versionados)`, `Se esse repositório já subiu pro GitHub, as chaves estão no histórico dele. ${exemplos.slice(0, 3).join('; ')}`, 'Troque as chaves desses arquivos (skill vazou-e-agora), depois `git rm --cached <arquivo>` e ponha `.env`, `.env.*` e `!.env.example` no .gitignore. Apagar o arquivo não apaga o histórico; trocar a chave resolve.');
+  if (foraIgnore) add('atencao', 'Chaves em arquivo', `${foraIgnore} arquivo(s) .env em repositório git sem estar no .gitignore`, 'Um `git add .` distraído manda a chave pro repositório.', 'Adicione `.env`, `.env.*` e `!.env.example` no .gitignore desses repositórios.');
+  if (semResposta) add('info', 'Chaves em arquivo', `${semResposta} arquivo(s) .env em repositório que o git não deixou conferir`, 'Pode ser git ausente ou repositório de outro usuário do computador.', 'Confira à mão nesses repositórios com `git ls-files .env`.');
+  if (envs.length > MAX_ENVS) add('info', 'Chaves em arquivo', `Conferi no git os primeiros ${MAX_ENVS} de ${envs.length} arquivos .env`, '', 'Pra conferir o resto, rode o checkup numa pasta de projetos: `--pasta <pasta>`.');
+  if (envs.length && !versionados && !foraIgnore && !semResposta) add('ok', 'Chaves em arquivo', `${envs.length} arquivo(s) .env encontrados${conferidos < envs.length ? ` (${conferidos} dentro de git)` : ''}, nenhum versionado no git`);
 }
 
 // ---------- 10. Chave esquecida em histórico de conversa (Claude Code, Codex) e de terminal ----------
@@ -356,7 +391,7 @@ if (!SEM_HIST) await varreHistorico();
   const ch = lerInicio(path.join(HOME, '.codex', 'hooks.json'), 1 << 20);
   if (/tripwires/.test(s) || /tripwires/.test(ch)) add('ok', 'Travas', 'tripwires ligado (barra leitura de arquivo de chave antes de acontecer)');
   else if (/PreToolUse/.test(s)) add('info', 'Travas', 'Há hook PreToolUse no Claude Code; confira se algum barra a leitura de .env e arquivos de chave');
-  else add('atencao', 'Travas', 'Nenhuma trava automática antes das ferramentas do agente', 'Regra escrita no CLAUDE.md é conselho; hook é trava que roda antes do comando e pode dizer não.', 'Veja o passo opcional do INSTALAR.md (tripwires, código aberto).');
+  else add('atencao', 'Travas', 'Nenhuma trava automática antes das ferramentas do agente', 'O agente pode esquecer uma regra escrita no CLAUDE.md; um hook roda antes de cada comando e pode dizer não.', 'Veja o passo opcional do INSTALAR.md (tripwires, código aberto).');
   const md = lerInicio(path.join(HOME, '.claude', 'CLAUDE.md'), 1 << 20) + lerInicio(path.join(HOME, '.codex', 'AGENTS.md'), 1 << 20);
   if (/kit-seguranca-ia/.test(md)) add('ok', 'Travas', 'Regras do kit presentes no CLAUDE.md ou AGENTS.md');
   else add('atencao', 'Travas', 'Regras de segurança do kit ainda não estão no CLAUDE.md nem no AGENTS.md', '', 'Siga o passo 3 do INSTALAR.md.');

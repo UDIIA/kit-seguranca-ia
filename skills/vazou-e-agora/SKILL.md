@@ -5,8 +5,9 @@ description: Roteiro de incidente pra chave, token ou senha que vazou ou pode te
 
 # Vazou, e agora?
 
-A ordem importa. Trocar a chave é o que encerra o risco. Apagar arquivo, limpar histórico e investigar vêm depois,
-porque cópia que alguém já fez não volta.
+Siga na ordem. Trocar a chave corta o uso da credencial vazada; apagar arquivo, limpar histórico e investigar vêm
+depois, porque cópia que alguém já fez não volta. Se a máquina está infectada, trocar a chave só resolve junto com o
+passo 0.
 
 ## 0. Se a máquina pode estar infectada
 
@@ -15,7 +16,7 @@ Faça os passos 1 e 2 **de outro aparelho** (celular, outro computador). O ladr�
 navegador, chave SSH, chave de nuvem, token de GitHub e npm e a configuração de mais de 15 ferramentas de IA, e
 deixava um carregador que buscava código novo a cada hora. Desconecte a máquina da rede até limpar.
 
-## 1. Revogar e gerar nova (minutos, não horas)
+## 1. Revogar e gerar nova, logo
 
 No painel de cada provedor afetado: apagar a chave antiga, criar uma nova com o menor poder possível.
 
@@ -36,18 +37,19 @@ as chaves guardadas lá, mesmo as que parecem paradas.
 ## 2. Atualizar onde a chave nova é usada
 
 Cada lugar que usava a antiga: `.env` local, variável do painel (Netlify, Vercel, Railway), cofre, CI do GitHub.
-A pessoa digita a chave nova direto no lugar; nunca na conversa. Depois, redeploy ou reinício do serviço pra ele
-pegar o valor novo.
+A pessoa digita a chave nova direto no lugar, e a conversa fica sem ela. Depois, redeploy ou reinício do serviço pra
+ele pegar o valor novo.
 
 ## 3. Confirmar que a velha morreu e a nova funciona
 
 ```bash
-node --env-file=.env "<pasta desta skill>/testa-chave.mjs" NOME_DA_VARIAVEL
+node "<pasta desta skill>/testa-chave.mjs" NOME_DA_VARIAVEL --arquivo "<caminho do .env>"
 ```
 
-Lê a chave da variável, chama uma rota de leitura do provedor que não gasta crédito e diz VIVA ou MORTA. Rode com
-a nova (tem que dar VIVA) e, se a pessoa ainda tiver a velha num arquivo, com ela (tem que dar MORTA). O script
-recusa se você passar o valor em vez do nome.
+`<pasta desta skill>` é a pasta onde este SKILL.md está. Sem `--arquivo`, o script lê a variável de ambiente do
+terminal. Ele chama uma rota de leitura do provedor que não gasta crédito e diz VIVA ou MORTA. Rode com a nova (tem
+que dar VIVA) e, se a pessoa ainda tiver a velha num arquivo, com ela (tem que dar MORTA). O script recusa se você
+passar o valor em vez do nome.
 
 ## 4. Ver se alguém usou
 
@@ -58,10 +60,17 @@ recusa se você passar o valor em vez do nome.
 
 ## 5. Limpar o que ficou para trás
 
-- `.env` versionado no git: `git rm --cached .env`, `.env*` no .gitignore, commit. O histórico antigo continua com a
-  chave; por isso o passo 1 vem antes. Repositório público com chave: trate como vazado sempre.
-- Ambiente Python contaminado: apague a pasta do ambiente e recrie com a versão fixada (`litellm!=1.107.0`).
-- Histórico de conversa com chave em texto: o checkup mostra onde. Depois de trocar a chave, o texto antigo vira
+- **`.env` versionado no git:** `git rm --cached .env`; no `.gitignore`, as linhas `.env`, `.env.*` e `!.env.example`;
+  depois `git commit --only .gitignore .env -m "tira .env do git"` (só esses dois, pra não levar junto trabalho que
+  a pessoa deixou preparado). O histórico antigo continua com a chave; por isso o passo 1 vem antes. Repositório
+  público com chave: trate como vazado sempre.
+- **Ambiente Python contaminado:** só ambiente virtual de projeto (`.venv`, `venv`, ambiente conda com nome). Antes de
+  apagar, guarde a lista de pacotes (`pip freeze > pacotes-antes.txt`, fora da pasta que vai sumir) e diga à pessoa o
+  caminho que vai sumir; apague com o sim dela e recrie bloqueando as versões atacadas
+  (`litellm!=1.107.0,!=1.82.7,!=1.82.8`). **Nunca apague o Python do sistema, o `base` do Anaconda ou Miniconda, nem
+  pasta fora do projeto:** aí o caminho é desinstalar o pacote (`pip uninstall litellm`) e reinstalar o Python se o
+  vírus estiver nele.
+- **Histórico de conversa com chave em texto:** o checkup mostra onde. Depois de trocar a chave, o texto antigo vira
   lixo inofensivo; apagar é opcional.
 
 ## 6. Fechar

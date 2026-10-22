@@ -26,6 +26,10 @@ mk(path.join(sp, 'litellm-1.107.0.dist-info', 'METADATA'), 'Name: litellm\nVersi
 mk(path.join(sp, 'cook.pth'), 'import cook\n');
 mk(path.join(sp, 'cook.py'), '# payload de teste\n');
 mk(path.join(sp, 'certifi-2025.1.31.dist-info', 'METADATA'), 'Name: certifi\n');
+// resto de versão antiga ao lado (em ordem alfabética vem antes da envenenada) noutro ambiente
+const sp2 = path.join(casa, 'projetos', 'resto', '.venv', 'Lib', 'site-packages');
+mk(path.join(sp2, 'litellm-1.106.0.dist-info', 'METADATA'), 'Name: litellm\nVersion: 1.106.0\n');
+mk(path.join(sp2, 'litellm-1.107.0.dist-info', 'METADATA'), 'Name: litellm\nVersion: 1.107.0\n');
 // 2. marca de roubo concluído na pasta temporária
 mk(path.join(tmp, '.pc_once_72129118c59f5636c0bb'), '');
 // 3. repositório git com .env versionado
@@ -33,7 +37,7 @@ const repo = path.join(casa, 'projetos', 'site');
 mk(path.join(repo, '.env'), `CHAVE=${aleatorio(30)}\n`);
 spawnSync('git', ['init', '-q', repo], { windowsHide: true });
 spawnSync('git', ['-C', repo, 'add', '.env'], { windowsHide: true });
-spawnSync('git', ['-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'teste'], { windowsHide: true });
+spawnSync('git', ['-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'teste'], { windowsHide: true });
 // 4. histórico falso de conversa com chaves geradas agora (nunca escritas neste arquivo)
 // Prefixo montado em pedaços: este teste não chama API nenhuma, e travas de gasto que leem o arquivo não confundem.
 const chaveA = `${['sk', 'ant', 'api03'].join('-')}-${aleatorio(95)}`;
@@ -61,9 +65,33 @@ const pin = String(100000 + (crypto.randomBytes(2).readUInt16BE() % 800000));
 const cfg = path.join(casa, 'cfg.json');
 fs.writeFileSync(cfg, JSON.stringify({ mcpServers: { x: { command: 'npx', args: ['srv@1.2.3', '--api-key', tokCurto] } }, pin }));
 const masc = spawnSync(process.execPath, [MASCARA, cfg], { encoding: 'utf8', windowsHide: true });
+// mascara, casos de borda da revisão: comentário só com a chave, URL de socket com senha na query, item de lista
+// YAML que é URL com senha, senha depois de flag curta, campo em português, senha em lista sob "pass"
+const tokGh = `ghp_${aleatorio(36)}`;
+const senhaQ = `Q${aleatorio(14)}`, senhaY = `Y${aleatorio(14)}`, senhaA = `a${aleatorio(9).toLowerCase().replace(/\d/g, 'x')}`, senhaP = `p${aleatorio(9)}`;
+const envBorda = path.join(casa, 'borda.env');
+fs.writeFileSync(envBorda, `# ${tokGh}\nDATABASE_URL=postgresql:///prod?user=admin&password=${senhaQ}\nCHAVE_PIX=minhachavepix\n`);
+const yml = path.join(casa, 'borda.yml');
+fs.writeFileSync(yml, `servicos:\n  - https://admin:${senhaY}@banco.interno/prod\n`);
+const cfg2 = path.join(casa, 'borda.json');
+fs.writeFileSync(cfg2, JSON.stringify({ mcpServers: { r: { command: 'redis-cli', args: ['-a', senhaA] } }, pass: [senhaP] }));
+const mB = [envBorda, yml, cfg2].map((f) => spawnSync(process.execPath, [MASCARA, f], { encoding: 'utf8', windowsHide: true }).stdout || '').join('\n');
+// testa-chave: valor de chave colado no lugar do nome não pode voltar na mensagem
+const colada = `${aleatorio(10)}aB3${aleatorio(19)}`;
+const tc = spawnSync(process.execPath, [path.join(AQUI, '..', 'skills', 'vazou-e-agora', 'testa-chave.mjs'), colada], { encoding: 'utf8', windowsHide: true, timeout: 15000 });
+// idade-pacote: operador != não pode derrubar o script
+const ip = spawnSync(process.execPath, [path.join(AQUI, '..', 'skills', 'pacote-novo-com-calma', 'idade-pacote.mjs'), 'pypi', 'litellm!=1.107.0'], { encoding: 'utf8', windowsHide: true, timeout: 15000 });
 const casos = [
   ['acusa LiteLLM 1.107.0', /\[URGENTE\] Pacote envenenado: LiteLLM 1\.107\.0 instalado/],
-  ['acusa LiteLLM 1.107.0 em egg-info', (s) => (s.match(/\[URGENTE\] Pacote envenenado: LiteLLM 1\.107\.0 instalado/g) || []).length >= 2],
+  ['acusa LiteLLM 1.107.0 em egg-info e ao lado de versão antiga', (s) => (s.match(/\[URGENTE\] Pacote envenenado: LiteLLM 1\.107\.0 instalado/g) || []).length >= 3],
+  ['mascara esconde chave sozinha em comentário', () => !mB.includes(tokGh) && !mB.includes(tokGh.slice(0, 12))],
+  ['mascara esconde senha em URL de socket', () => !mB.includes(senhaQ)],
+  ['mascara esconde URL com senha em lista YAML', () => !mB.includes(senhaY)],
+  ['mascara esconde senha depois de -a', () => !mB.includes(senhaA)],
+  ['mascara esconde campo CHAVE_ em português', () => !mB.includes('minhachavepix')],
+  ['mascara esconde senha em lista sob "pass"', () => !mB.includes(senhaP)],
+  ['testa-chave não repete chave colada no lugar do nome', () => tc.status === 2 && !(tc.stdout + tc.stderr).includes(colada)],
+  ['idade-pacote recusa != sem quebrar', () => ip.status === 2 && !/TypeError/.test(ip.stderr)],
   ['nome de pasta não vira comando', () => pwned()],
   ...(temBun ? [['bun com minimumReleaseAge = 0 não passa como OK', /\[ATENÇÃO\] Pacotes: bun .* sem trava de idade/]] : []),
   ['sonda recusa domínio com @', () => sondaRuim.status === 2 && /domínio inválido/.test(sondaRuim.stderr)],
@@ -84,7 +112,7 @@ for (const [nome, t] of casos) {
   console.log(`${ok ? 'passou' : 'FALHOU'}  ${nome}`);
   if (!ok) falhas++;
 }
-if (falhas) console.log('\n--- saída do checkup ---\n' + saida);
+if (falhas || process.argv.includes('--mostrar')) console.log('\n--- saída do checkup ---\n' + saida);
 fs.rmSync(casa, { recursive: true, force: true });
 console.log(`\n${casos.length - falhas}/${casos.length} casos`);
 process.exit(falhas ? 1 : 0);

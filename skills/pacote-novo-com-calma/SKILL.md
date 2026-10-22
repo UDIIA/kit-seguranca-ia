@@ -7,7 +7,9 @@ description: Antes de instalar ou atualizar qualquer pacote, biblioteca, imagem 
 
 Em 21/10/2026 a versão 1.107.0 do LiteLLM saiu no PyPI com um ladrão de credenciais. Ficou ~1h45 no ar. Quem rodou
 `pip install -U litellm` nessa janela levou o vírus; quem esperou alguns dias, não. A maioria das versões
-envenenadas é descoberta e retirada em horas ou dias. Esperar é a defesa mais barata que existe.
+envenenadas é descoberta e retirada em horas ou dias, e esperar não custa nada.
+
+`<pasta desta skill>` é a pasta onde este SKILL.md está.
 
 ## Antes de instalar
 
@@ -16,25 +18,29 @@ node "<pasta desta skill>/idade-pacote.mjs" npm <pacote>[@versao]
 node "<pasta desta skill>/idade-pacote.mjs" pypi <pacote>[==versao]
 ```
 
-Ele diz: quando a versão saiu, se tem menos de 7 dias, se o autor retirou (yanked), se roda script na instalação
-(npm) e se veio com prova de origem.
+Ele diz: quando a versão saiu, se tem menos de 7 dias, se o autor retirou (yanked) ou condenou (deprecated), se roda
+script na instalação (npm) e se veio com prova de origem. Sai com código 1 quando é pra esperar ou não instalar.
 
 | Resultado | O que fazer |
 |---|---|
 | Menos de 7 dias | Avise a pessoa e use a versão anterior. Quem decide pela nova é ela, depois de ler o que mudou. Correção de segurança urgente é a exceção: aí a versão nova é o remédio, confira que saiu do site oficial do projeto. |
-| Retirada pelo autor | Não instale. Se já está instalada, skill `checkup-seguranca`. |
+| Retirada ou condenada pelo autor | Não instale. Se já está instalada, skill `checkup-seguranca`. |
 | Roda script na instalação | Leia o script antes ou instale com `--ignore-scripts`. |
-| Nome parecido com pacote famoso | Pare. `reqeusts`, `python-dotenv2`, `claude-code-cli` são truques comuns. |
+| Nome parecido com pacote famoso | Não instale e conte à pessoa: `reqeusts`, `python-dotenv2`, `claude-code-cli` são truques comuns. |
 
 ## Ligar a espera de uma vez (vale pra todo projeto)
+
+Antes de configurar, confira a versão de cada gerenciador (`npm -v`, `pnpm -v`, `uv --version`, `bun -v`,
+`yarn -v`). Abaixo da versão mínima a configuração não existe: em vez de gravar, ofereça atualizar o gerenciador. No
+uv antigo, gravar `"7 days"` quebra os comandos dele.
 
 | Gerenciador | Comando ou arquivo | Versão mínima |
 |---|---|---|
 | npm | `npm config set min-release-age 7` (dias) | npm 11.10 |
-| pnpm | `minimumReleaseAge: 10080` (minutos) na config global ou no `pnpm-workspace.yaml` | pnpm 10.16 |
+| pnpm | `pnpm config set --global minimum-release-age 10080` (minutos); por projeto, `minimumReleaseAge: 10080` no `pnpm-workspace.yaml` | pnpm 10.16 |
 | bun | `~/.bunfig.toml`: `[install]` e `minimumReleaseAge = 604800` (segundos) | bun 1.3 |
-| uv | `uv.toml`: `exclude-newer = "7 days"` | uv 0.9.17 |
-| yarn | `.yarnrc.yml`: `npmMinimalAgeGate: "7d"` | yarn 4.10 |
+| uv | `exclude-newer = "7 days"` no `uv.toml` global: `%APPDATA%\uv\uv.toml` no Windows, `~/.config/uv/uv.toml` no macOS e Linux | uv 0.9.17 |
+| yarn | `.yarnrc.yml` de cada projeto: `npmMinimalAgeGate: "7d"`. No yarn 1 não existe | yarn 4.10 |
 
 Cada gerenciador usa uma unidade (dias, minutos, segundos). Confira depois com o `checkup-seguranca`.
 

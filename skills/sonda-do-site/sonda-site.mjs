@@ -44,24 +44,45 @@ const ALVOS = [
   ['/package.json', 'info', 'package.json (lista as bibliotecas e versões do site)', (t) => /^\s*\{/.test(t) && /"(?:name|scripts|dependencies|devDependencies)"\s*:/.test(t)],
 ];
 
+// Lê no máximo 200 KB e larga o resto: um backup.sql de 500 MB público não trava a sonda nem enche a memória.
+const LIMITE = 200000;
 async function pega(url) {
   const ctl = AbortSignal.timeout(12000);
   try {
     const r = await fetch(url, { headers: { 'user-agent': UA }, redirect: 'manual', signal: ctl });
-    const buf = Buffer.from(await r.arrayBuffer());
-    return { status: r.status, tipo: r.headers.get('content-type') || '', tam: buf.length, texto: buf.subarray(0, 200000).toString('latin1'), h: r.headers };
+    const partes = [];
+    let lidos = 0;
+    if (r.body) {
+      const leitor = r.body.getReader();
+      while (lidos < LIMITE) { const { done, value } = await leitor.read(); if (done) break; partes.push(value); lidos += value.length; }
+      await leitor.cancel().catch(() => {});
+    }
+    const buf = Buffer.concat(partes).subarray(0, LIMITE);
+    const tam = Number(r.headers.get('content-length')) || lidos;
+    return { status: r.status, tipo: r.headers.get('content-type') || '', tam, texto: buf.toString('latin1'), h: r.headers };
   } catch (e) { return { status: 0, erro: String(e.cause?.code || e.name || e).slice(0, 60) }; }
 }
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
+const hostDe = (loc, base) => { try { return new URL(loc, base).hostname.toLowerCase(); } catch { return ''; } };
 const resultado = [];
 for (const dom of dominios) {
-  const base = `https://${dom}`;
+  let base = `https://${dom}`;
   const achados = [];
-  const home = await pega(base + '/');
+  let home = await pega(base + '/');
   if (home.status === 0) { resultado.push({ dominio: dom, erro: `não respondeu (${home.erro})`, achados }); continue; }
+  // seusite.com.br → www.seusite.com.br (ou o contrário): a sonda segue esse salto, e só esse. Redirecionamento pra
+  // outro domínio é avisado e não é seguido (a sonda só testa o que você passou).
+  if ([301, 302, 307, 308].includes(home.status)) {
+    const destino = hostDe(home.h.get('location') || '', base);
+    const irmao = destino === `www.${dom}` || `www.${destino}` === dom;
+    if (irmao) { base = `https://${destino}`; home = await pega(base + '/'); achados.push({ nivel: 'info', o: `${dom} redireciona pra ${destino}; a sonda conferiu ${destino}`, conserto: 'Nada a fazer. Se os dois endereços servem arquivos diferentes, rode a sonda nos dois.' }); }
+    else if (destino && destino !== dom) achados.push({ nivel: 'atencao', o: `${dom} redireciona pra outro domínio (${destino}); os testes abaixo valem só pra ${dom}`, conserto: `Se ${destino} também é seu, rode a sonda nele.` });
+  }
   // Linha de base: o que o site devolve pra um endereço que não existe (site de página única devolve 200 com o HTML).
   const nada = await pega(`${base}/kit-sonda-${Math.random().toString(36).slice(2, 10)}.txt`);
-  const pareceNada = (r) => r.status === nada.status && Math.abs(r.tam - nada.tam) < 64;
+  // Só descarta por "parece a página de não encontrado" quando a própria página de não encontrado passaria no teste;
+  // senão, um .git/HEAD de 21 bytes some junto com um 404 curto.
+  const pareceNada = (r, teste) => r.status === nada.status && Math.abs(r.tam - nada.tam) < 64 && teste(nada.texto || '');
   const pw = home.h.get('x-powered-by') || '';
   const srv = home.h.get('server') || '';
   const php = (pw.match(/PHP\/(\d+\.\d+\.\d+)/i) || srv.match(/PHP\/(\d+\.\d+\.\d+)/i) || [])[1];
@@ -74,7 +95,7 @@ for (const dom of dominios) {
   for (const [cam, nivel, oque, teste] of ALVOS) {
     await pausa(250);
     const r = await pega(base + cam);
-    if (r.status !== 200 || pareceNada(r)) continue;
+    if (r.status !== 200 || pareceNada(r, teste)) continue;
     const html = /text\/html/i.test(r.tipo) || /^\s*<(!doctype|html)/i.test(r.texto);
     if (html && !cam.endsWith('.php') && cam !== '/server-status') continue;
     if (!teste(r.texto)) continue;

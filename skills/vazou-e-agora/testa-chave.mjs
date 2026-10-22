@@ -3,20 +3,49 @@
 // Diz se uma chave de API ainda funciona, sem a chave aparecer em lugar nenhum. Ela é lida de uma VARIÁVEL DE
 // AMBIENTE (você passa o NOME, nunca o valor) e vai só pro provedor dela, numa chamada de leitura que não gasta
 // crédito (listar modelos ou ver o próprio usuário). A saída é só o código HTTP e o veredito.
-// Uso: node testa-chave.mjs NOME_DA_VARIAVEL [--provedor anthropic|openai|google|github|openrouter|mistral|groq|huggingface]
-//      node --env-file=.env testa-chave.mjs ANTHROPIC_API_KEY      (lê do .env sem imprimir; Node 20.6 ou mais novo)
+// Uso: node testa-chave.mjs NOME_DA_VARIAVEL [--arquivo <.env>] [--provedor anthropic|openai|google|github|openrouter|mistral|groq|huggingface]
+//      node testa-chave.mjs ANTHROPIC_API_KEY --arquivo .env      (lê a linha desse nome no arquivo, sem imprimir nada dela)
+import fs from 'node:fs';
 const args = process.argv.slice(2);
-const nome = args.find((a) => !a.startsWith('--'));
-const prov = args.includes('--provedor') ? args[args.indexOf('--provedor') + 1] : null;
+const iProv = args.indexOf('--provedor');
+const iArq = args.indexOf('--arquivo');
+const prov = iProv >= 0 ? String(args[iProv + 1] || '').toLowerCase() : null;
+const arquivo = iArq >= 0 ? args[iArq + 1] : null;
+const valorDeFlag = (i) => (iProv >= 0 && i === iProv + 1) || (iArq >= 0 && i === iArq + 1);
+const nome = args.find((a, i) => !a.startsWith('--') && !valorDeFlag(i));
 if (!nome) { console.error('uso: node testa-chave.mjs NOME_DA_VARIAVEL [--provedor x]'); process.exit(2); }
-if (/^(sk-|AIza|gh[pousr]_|github_pat_|hf_|gsk_|xox)/.test(nome) || nome.length > 60) {
-  console.error('Isso parece o VALOR de uma chave, não o nome da variável. Não cole chave em comando nem em conversa.');
-  console.error('Ponha a chave numa variável (ou no .env) e passe só o nome. Trate essa chave como exposta: skill vazou-e-agora.');
+// Nome de variável é letra, número e sublinhado, curto. Qualquer outra coisa pode ser o valor de uma chave colado por
+// engano, e aí nada aqui repete o que veio.
+const pareceValor = !/^[A-Za-z_][A-Za-z0-9_]{0,59}$/.test(nome) || /^(sk-|AIza|gh[pousr]_|github_pat_|hf_|gsk_|xox|npm_)/.test(nome)
+  || (nome.length >= 16 && /[a-z]/.test(nome) && /[A-Z]/.test(nome) && /\d/.test(nome));
+if (pareceValor) {
+  console.error('Isso não parece nome de variável (pode ser o VALOR de uma chave). Não cole chave em comando nem em conversa.');
+  console.error('Ponha a chave numa variável (ou no .env) e passe só o nome, como ANTHROPIC_API_KEY. Se era uma chave, trate como exposta: skill vazou-e-agora.');
   process.exit(2);
 }
-const v = (process.env[nome] || '').trim();
-if (!v) { console.error(`A variável ${nome} está vazia neste terminal. Dica: node --env-file=<seu .env> testa-chave.mjs ${nome}`); process.exit(2); }
-const adivinha = () => /^sk-ant-/.test(v) ? 'anthropic' : /^sk-or-/.test(v) ? 'openrouter' : /^sk-/.test(v) ? 'openai' : /^AIza/.test(v) ? 'google' : /^(gh[pousr]_|github_pat_)/.test(v) ? 'github' : /^gsk_/.test(v) ? 'groq' : /^hf_/.test(v) ? 'huggingface' : null;
+// Do arquivo (.env) quando passado; senão, da variável de ambiente. Funciona em qualquer Node 18+.
+function doArquivo(caminho) {
+  let texto;
+  try { texto = fs.readFileSync(caminho, 'utf8'); } catch { console.error('Não consegui abrir o arquivo passado em --arquivo.'); process.exit(2); }
+  for (const linha of texto.split(/\r?\n/)) {
+    const m = linha.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!m || m[1] !== nome) continue;
+    let val = m[2].trim();
+    if (/^(["']).*\1$/.test(val)) val = val.slice(1, -1);
+    else val = val.replace(/\s+#.*$/, '');
+    return val.trim();
+  }
+  return '';
+}
+const v = arquivo ? doArquivo(arquivo) : (process.env[nome] || '').trim();
+// Só repete o nome quando ele tem cara de nome de variável (MAIÚSCULAS_COM_SUBLINHADO).
+const eco = /^[A-Z_][A-Z0-9_]*$/.test(nome) ? nome : '<NOME>';
+if (!v) { console.error(arquivo ? `Não achei ${eco} preenchida no arquivo.` : `A variável ${eco} está vazia neste terminal. Dica: node testa-chave.mjs ${eco} --arquivo <caminho do seu .env>`); process.exit(2); }
+// Palpite só pelos formatos que são de um provedor só. "sk-" sozinho também é usado por DeepSeek, proxies e outros:
+// aí só vai pra OpenAI se o nome da variável disser OPENAI; senão pede --provedor.
+const adivinha = () => /^sk-ant-/.test(v) ? 'anthropic' : /^sk-or-/.test(v) ? 'openrouter' : /^sk-(?:proj|svcacct|admin)-/.test(v) ? 'openai'
+  : /^sk-/.test(v) && /OPENAI/i.test(nome) ? 'openai' : /^AIza/.test(v) ? 'google' : /^(gh[pousr]_|github_pat_)/.test(v) ? 'github'
+  : /^gsk_/.test(v) ? 'groq' : /^hf_/.test(v) ? 'huggingface' : null;
 const p = prov || adivinha();
 const ROTAS = {
   anthropic: ['https://api.anthropic.com/v1/models', { 'x-api-key': v, 'anthropic-version': '2023-06-01' }],
@@ -31,8 +60,9 @@ const ROTAS = {
 if (!ROTAS[p]) { console.error(`Não reconheci o provedor pelo formato. Passe --provedor (${Object.keys(ROTAS).join(', ')}).`); process.exit(2); }
 const [url, headers] = ROTAS[p];
 try {
-  const r = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
-  await r.arrayBuffer();
+  // Sem seguir redirecionamento: a chave vai só pro endereço fixo do provedor, nunca pra outro que ele apontar.
+  const r = await fetch(url, { headers, redirect: 'manual', signal: AbortSignal.timeout(15000) });
+  await r.body?.cancel();
   const viva = r.status >= 200 && r.status < 300;
   const morta = r.status === 401 || r.status === 403;
   console.log(`${nome} (${p}): HTTP ${r.status} → ${viva ? 'VIVA: a chave funciona' : morta ? 'MORTA: revogada ou inválida' : r.status === 429 ? 'VIVA, mas com limite estourado agora' : 'resposta inesperada, confira no painel do provedor'}`);
