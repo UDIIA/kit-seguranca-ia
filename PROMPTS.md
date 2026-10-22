@@ -30,7 +30,7 @@ Acho que minha chave da [OpenAI / Anthropic / Google / GitHub] vazou. Segue a sk
 ## Antes de instalar qualquer coisa
 
 ```
-Antes de instalar [nome do pacote, MCP ou skill], confere a idade da versão, se o autor retirou e o que ela roda na instalação. Se for skill ou MCP, lê o código e me diz em 3 linhas o que faz e se manda dado pra fora.
+Antes de instalar [pacote, MCP ou skill], confere a idade da versão, se o autor retirou e o que ela roda na instalação. Se for skill ou MCP, lê o código e me diz em 3 linhas o que faz e se manda dado pra fora.
 ```
 
 ## Ligar a espera de 7 dias em tudo
@@ -45,6 +45,12 @@ Liga a espera de 7 dias pra versão nova em todos os gerenciadores de pacote que
 Me ajuda a tirar minhas chaves de API do arquivo .env aberto e guardar num cofre. Usa o mascara.mjs pra ver o que tem nos arquivos, sem mostrar nenhum valor. Me dá duas opções de cofre que funcionam no meu sistema e faz comigo a que eu escolher.
 ```
 
+## Saiu notícia de ataque novo
+
+```
+Saiu notícia de [ataque, pacote ou falha]. Procura em fonte oficial (aviso de segurança do próprio projeto, site do fabricante) o que foi afetado, quais versões e o que fazer. Cruza com o que eu tenho instalado e com o que o checkup do kit confere, e me diz o que o checkup não cobre e como conferir isso à mão. Não baixe nem rode "prova de conceito" nem "ferramenta de detecção" de repositório desconhecido.
+```
+
 ## Rotina semanal
 
 ```
@@ -54,5 +60,5 @@ Roda o checkup de segurança e compara com o último relatório salvo na minha p
 ## Sem terminal (Claude, ChatGPT ou Gemini pelo navegador ou pelo celular)
 
 ```
-Quero um checkup de segurança depois da onda de ataques de outubro de 2026: a versão 1.107.0 do LiteLLM saiu envenenada em 21/10; as falhas PHP2Shell no PHP foram corrigidas em 21/10 (8.2.35, 8.3.36, 8.4.27, 8.5.12); o Console do OpenCode e a Railway vazaram chaves de clientes; o Node.js corrigiu 10 falhas em 21/10 (22.23.4, 24.22.1, 26.12.1). Eu não uso terminal. Me entrevista, uma pergunta por vez, pra descobrir: quais ferramentas de IA eu uso e onde guardei minhas chaves de API; se tenho site, em qual hospedagem, e se é WordPress; se instalei algo com Python ou Node nesta semana. No fim, me dá a lista do que fazer hoje, em ordem, com o caminho dentro de cada painel pra trocar chave e ligar limite de gasto. Nunca me peça pra colar uma chave ou senha aqui.
+Quero um checkup de segurança depois da onda de ataques de outubro de 2026: a versão 1.107.0 do LiteLLM saiu envenenada em 21/10; as falhas PHP2Shell no PHP foram corrigidas em 21/10 (8.2.35, 8.3.36, 8.4.27, 8.5.12); o Console do OpenCode e a Railway vazaram chaves de clientes; o Node.js corrigiu 10 falhas em 21/10 (22.23.4, 24.22.1, 26.12.1). Eu não uso terminal. Me entrevista, uma pergunta por vez, pra descobrir: quais ferramentas de IA eu uso e onde guardei minhas chaves de API; se tenho site, em qual hospedagem, se é WordPress e se ainda pago alguma hospedagem antiga; se uso automação (n8n, Evolution API, Supabase) e onde ela está hospedada; se instalei algo com Python ou Node nesta semana. No fim, me dá a lista do que fazer hoje, em ordem, com o caminho dentro de cada painel pra trocar chave, ligar limite de gasto e encerrar sessões abertas que eu não reconheço. Nunca me peça pra colar uma chave ou senha aqui.
 ```

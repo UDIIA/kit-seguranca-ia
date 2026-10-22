@@ -29,6 +29,7 @@ No painel de cada provedor afetado: apagar a chave antiga, criar uma nova com o 
 | npm | npmjs.com → Access Tokens |
 | AWS, Azure, Google Cloud | console do provedor → IAM / credenciais; desative antes de apagar |
 | Banco de dados | painel do banco → trocar senha do usuário |
+| Automação (n8n, Evolution API, Supabase, webhooks) | painel de cada um → gerar chave ou segredo novo; webhook com segredo na URL ganha URL nova |
 | Senhas do navegador | trocar as mais importantes (e-mail, banco, GitHub) e ligar verificação em duas etapas |
 
 Se a plataforma onde a chave estava guardada foi invadida (OpenCode Console, Railway em 21/10/2026), troque TODAS

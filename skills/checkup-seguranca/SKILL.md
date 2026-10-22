@@ -56,13 +56,40 @@ node "<pasta desta skill>/checkup.mjs"
 3. **Correções que você pode fazer na hora, com o sim da pessoa:** ligar a trava de idade do jeito da skill
    `pacote-novo-com-calma` (conferindo antes a versão de cada gerenciador), pôr `.env`, `.env.*` e `!.env.example` no
    .gitignore, atualizar certifi no ambiente indicado, pôr as regras do kit no CLAUDE.md e no AGENTS.md.
-4. **Atualizar Node ou PHP:** antes de instalar, liste o que está rodando com Node ou PHP e avise o que vai fechar.
-   No Windows o instalador do Node fecha à força os programas que usam o Node, mesmo com a opção que deveria
-   impedir isso (medido em 22/10/2026). Depois de instalar, rode `node --version` (ou `php -v`) e mostre o número;
-   só chame de atualizado com esse número na tela.
+4. **Atualizar Node ou PHP:** siga o passo a passo da seção "Atualizar o Node" abaixo. No PHP local vale a mesma
+   ideia: atualizar pelo mesmo caminho que instalou, reiniciar o PHP-FPM ou o servidor web e mostrar `php -v`.
 5. **Chave em histórico:** o relatório mostra só o começo mascarado. Pergunte se aquela chave ainda está em uso. Se
    estiver, a saída é trocar (skill `vazou-e-agora`); apagar o histórico não desfaz cópia que alguém já fez.
 6. Rode o checkup de novo no fim e mostre o antes e depois.
+
+## Atualizar o Node
+
+Mínimo de 21/10/2026: 22.23.4, 24.22.1 ou 26.12.1, conforme a linha (22, 24 ou 26) que a pessoa já usa.
+
+1. **Descubra como ele foi instalado:** `where node` no Windows, `which node` no macOS e no Linux. Caminho com `nvm`,
+   `fnm` ou `volta` quer dizer gerenciador de versão (`nvm install 22.23.4`, `fnm install 22.23.4`,
+   `volta install node@22.23.4`). `C:\Program Files\nodejs` quer dizer o instalador oficial. Homebrew, `apt` ou
+   outro gerenciador do sistema: atualize por ele. Atualize sempre pelo mesmo caminho que instalou.
+2. **Guarde o caminho de volta:** anote a versão atual (`node --version`). Com gerenciador de versão a anterior
+   continua instalada. Com o instalador oficial, a versão anterior fica em `https://nodejs.org/dist/v<versão>/`.
+3. **Baixe só de nodejs.org e confira:** compare o SHA256 do instalador com o `SHASUMS256.txt` da mesma pasta
+   (`certutil -hashfile <arquivo> SHA256` no Windows, `shasum -a 256 <arquivo>` no macOS e no Linux). Diferente:
+   apague o arquivo e conte à pessoa.
+4. **Antes de instalar, liste o que usa o Node agora** (`tasklist /fi "imagename eq node.exe"` no Windows,
+   `ps aux | grep node` no macOS e no Linux) e diga à pessoa o que vai fechar. No Windows o instalador fecha à força
+   os programas que usam o Node, mesmo com a opção que deveria impedir isso (medido em 22/10/2026). Se o próprio
+   agente roda no Node (Claude Code instalado pelo npm, servidores MCP), a conversa pode cair no meio: peça à pessoa
+   pra salvar o trabalho e rodar o instalador ela mesma, ou avise antes de rodar.
+5. **Sem permissão de administrador:** use um gerenciador de versão (nvm, fnm), que instala na pasta do usuário, ou
+   baixe o arquivo compactado oficial da mesma pasta de nodejs.org (`.zip` no Windows, `.tar.xz` no macOS e no
+   Linux), confira o SHA256, descompacte numa pasta do usuário e ponha essa pasta na frente do PATH dos programas que
+   precisam da correção já.
+6. **Depois:** abra um terminal novo e rode `node --version`. Só chame de atualizado com o número certo na tela.
+   Programa que estava aberto antes continua com o Node velho na memória até reiniciar: reabra servidores, MCPs e o
+   próprio agente, e rode o checkup de novo.
+7. **Aplicativos com motor próprio** (VS Code, Cursor, Claude Desktop, app do Codex, OpenCode desktop) trazem Node
+   ou Electron dentro: a correção deles chega pela atualização de cada um. Peça à pessoa pra abrir cada um e aplicar a
+   atualização pendente.
 
 ## Nunca
 

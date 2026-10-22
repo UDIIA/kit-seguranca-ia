@@ -35,6 +35,10 @@ avisa; redirecionamento pra outro domínio ela só avisa.
   como o site é montado. Tire da pasta publicada.
 - **INFO** (`package.json`): lista as bibliotecas e versões do site. Baixo risco; tire se der.
 - **OK:** nenhum dos 23 endereços conferidos está aberto. Outros arquivos e outras falhas ficam fora deste teste.
+- **Hospedagem antiga:** a sonda testa o endereço que o domínio aponta hoje. Se o site mudou de hospedagem (por
+  exemplo, de um cPanel com WordPress pra Netlify ou Vercel), pergunte se a conta antiga ainda está paga. O site velho
+  pode continuar no ar lá, com PHP antigo e senha do banco, num endereço que ninguém olha. Se estiver, a pessoa apaga
+  ou atualiza pelo painel da hospedagem antiga.
 
 ## Consertos por tipo de hospedagem
 

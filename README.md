@@ -21,7 +21,8 @@ Entre 19 e 21/10/2026 vieram três ataques atrás do mesmo alvo, a chave, e uma 
 
 - **21/10, pacote envenenado.** A versão 1.107.0 do LiteLLM, biblioteca Python que liga programas a dezenas de IAs,
   saiu com um ladrão de credenciais e ficou cerca de 1h45 no ar. Levava senha salva no navegador, chave SSH (a que dá
-  acesso a servidores), chave de nuvem e a configuração de mais de 15 ferramentas de IA de programação.
+  acesso a servidores), chave de nuvem e a configuração de mais de 15 ferramentas de IA de programação, e deixava um
+  carregador que busca código novo a cada hora.
   Fontes: [LiteLLM](https://docs.litellm.ai/blog/security-incident-oct-21-2026),
   [StepSecurity](https://www.stepsecurity.io/blog/litellm-1-107-0-compromised-pypi-backdoored-wheels-credential-stealer).
 - **19 a 21/10, cofre invadido.** O Console do OpenCode e a Railway, lugares onde muita gente guarda chave de API,

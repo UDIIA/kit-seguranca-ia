@@ -32,3 +32,14 @@ correção do Node.js de 21/10).
 - Textos: instalação numa pasta temporária, Codex em `~/.agents/skills`, conferência da versão de cada gerenciador
   antes de ligar a espera, `.env`, `.env.*` e `!.env.example` no `.gitignore`, ambiente Python sem apagar o do
   sistema, fontes dos ataques com link no README.
+
+### Revisão de fidelidade ao pedido (Grok e Gemini)
+
+- `checkup-seguranca`: passo a passo pra atualizar o Node (como foi instalado, SHA256, caminho de volta, o que fecha,
+  sem administrador, reiniciar o que estava aberto, apps com motor próprio) e item INFO sobre o que a conferência do
+  Node não alcança.
+- `pacote-novo-com-calma`: atualizar o próprio gerenciador antes de ligar a espera; modelo de IA local como arquivo de
+  terceiro.
+- `sonda-do-site`: hospedagem antiga esquecida. `vazou-e-agora`: chaves de automação (n8n, Evolution API, Supabase).
+- `PROMPTS.md`: pedido "Saiu notícia de ataque novo"; o "Sem terminal" pergunta de hospedagem antiga, automação e
+  sessões abertas.

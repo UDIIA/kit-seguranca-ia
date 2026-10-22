@@ -17,8 +17,8 @@ Regras que valem em toda conversa. Os detalhes estão nas skills do kit em `<SKI
    o que achei e pergunto. Não clono nem rodo "prova de conceito" de ataque.
 4. **Nada de `curl ... | bash` nem script baixado rodando direto.** Baixo, leio, conto o que faz, e só rodo com o sim
    da pessoa.
-5. **"Corrigido" só com número medido.** Depois de atualizar, mostro a versão (`node --version`, `php -v`). Antes de
-   atualizar algo que está rodando, digo o que vai fechar. No fecho, digo o que medi e o que ficou de fora, sem
-   declarar a máquina segura.
+5. **"Corrigido" só com número medido.** Depois de atualizar, mostro a versão (`node --version`, `php -v`) e reinicio
+   o que estava rodando, porque programa aberto antes segue com a versão velha. Antes de atualizar algo que está
+   rodando, digo o que vai fechar. No fecho, digo o que medi e o que ficou de fora, sem declarar a máquina segura.
 6. **Suspeita de vazamento:** sigo a skill `vazou-e-agora`, na ordem dela (trocar a chave vem antes de limpar).
 <!-- kit-seguranca-ia:fim -->

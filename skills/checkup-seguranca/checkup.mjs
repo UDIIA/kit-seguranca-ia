@@ -67,6 +67,9 @@ const NODE_MIN = { 22: '22.23.4', 24: '24.22.1', 26: '26.12.1' };
   } else {
     add('urgente', 'Node.js', `Node ${v} é de uma linha que não recebe mais correção`, 'Só as linhas 22, 24 e 26 recebem correção de segurança.', 'Instale o Node 22.23.4, 24.22.1 ou 26.12.1 (ou mais novo) e confira com `node --version`.');
   }
+  // Aplicativo com Node ou Electron embutido não aparece no `node --version`, e processo aberto antes da atualização
+  // segue com o binário velho na memória: os dois ficam de fora desta medida, então o relatório diz isso.
+  add('info', 'Node.js', 'VS Code, Cursor, Claude Desktop, o app do Codex e parecidos trazem o próprio Node ou Electron e ficam fora desta conferência', 'A correção deles chega pela atualização do próprio aplicativo. Programa aberto antes de atualizar o Node continua na versão velha até reiniciar.', 'Abra cada aplicativo e aplique a atualização pendente; depois de atualizar o Node, reinicie servidores, MCPs e o próprio agente.');
 }
 
 // ---------- 2. Trava de idade dos pacotes (versão recém-publicada espera alguns dias antes de entrar) ----------
@@ -85,7 +88,7 @@ const NODE_MIN = { 22: '22.23.4', 24: '24.22.1', 26: '26.12.1' };
     const v = pnpm.out.split(/\s/)[0];
     const age = valorCfg(runFixo('pnpm config get minimumReleaseAge').out) || valorCfg(runFixo('pnpm config get minimum-release-age').out);
     const conserto = 'Rode `pnpm config set --global minimum-release-age 10080` (minutos, 7 dias).';
-    if (cmp(v, '10.16.0') < 0) add('atencao', 'Pacotes', `pnpm ${v} não tem trava de idade (ela chegou no pnpm 10.16)`, '', `Atualize o pnpm. ${conserto}`);
+    if (cmp(v, '10.16.0') < 0) add('atencao', 'Pacotes', `pnpm ${v} não tem trava de idade (ela chegou no pnpm 10.16)`, '', `Atualize o pnpm (\`pnpm self-update\`). ${conserto}`);
     else if (/^\d+$/.test(age) && Number(age) >= 1440) add('ok', 'Pacotes', `pnpm ${v} espera ${Math.round(Number(age) / 1440)} dia(s) antes de instalar versão nova`);
     else add('atencao', 'Pacotes', `pnpm ${v} sem trava de idade de pelo menos 1 dia`, age ? `minimum-release-age está em ${age} minuto(s).` : '', conserto);
   }
