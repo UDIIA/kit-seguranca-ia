@@ -50,3 +50,6 @@ correção do Node.js de 21/10).
   direto, sem mostrar o resumo. O `INSTALAR.md` passou a terminar a primeira resposta no resumo de cada script e em
   "Posso instalar?", sem copiar nada nessa resposta; o relatório final ganhou ordem fixa; no Windows o caminho das
   regras vai no formato `C:/...`.
+- `idade-pacote` entende faixa (`npm@11`, `npm@11.21`) e etiqueta (`next-11`): mostra a versão exata e a mais nova da
+  faixa com 7 dias ou mais. O conserto do npm no checkup e na skill manda instalar a versão que ele indicar; no
+  Windows o npm novo vai pra pasta do usuário e o atalho do Node passa a usá-lo, sem administrador.

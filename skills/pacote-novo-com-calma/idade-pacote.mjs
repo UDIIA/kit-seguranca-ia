@@ -32,13 +32,31 @@ try {
     if (!m) { console.error(`não entendi "${citacao(alvo)}". ${USO}`); process.exit(2); }
     const nome = m[1];
     const d = await j(`https://registry.npmjs.org/${nome.replace('/', '%2f')}`);
-    const ver = m[2] || d['dist-tags']?.latest;
+    let ver = m[2] || d['dist-tags']?.latest;
+    // Etiqueta (next-11, latest) ou faixa só com o número principal (npm@11, npm@11.21): resolve pra versão exata e
+    // aponta a mais nova da faixa que já tem 7 dias, que é a que o `npm install` deveria pedir.
+    let nota = '';
+    if (ver && !d.versions?.[ver]) {
+      const tag = d['dist-tags']?.[ver];
+      if (tag) { nota = `"${citacao(ver)}" é uma etiqueta que hoje aponta pra ${tag}.`; ver = tag; }
+      else if (/^\d+(\.\d+)?$/.test(ver)) {
+        const num = (v) => v.split('.').map(Number);
+        const ordem = (a, b) => { const [x, y] = [num(a), num(b)]; return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; };
+        const faixa = Object.keys(d.versions || {}).filter((v) => /^\d+\.\d+\.\d+$/.test(v) && v.startsWith(`${ver}.`)).sort(ordem);
+        const madura = faixa.filter((v) => idade(d.time?.[v]) >= DIAS_MIN).pop();
+        if (faixa.length) {
+          nota = `"${ver}" é uma faixa; a mais nova dela é ${faixa.at(-1)}.`
+            + (madura && madura !== faixa.at(-1) ? ` A mais nova com ${DIAS_MIN} dias ou mais é ${madura}: instale \`${nome}@${madura}\`.` : '');
+          ver = faixa.at(-1);
+        }
+      }
+    }
     const info = d.versions?.[ver];
     if (!info) { console.log(`${nome}@${ver}: essa versão não existe no npm. Ou foi retirada (se você tem ela instalada, descubra por quê antes de seguir) ou o nome está errado (desconfie de nome parecido com pacote famoso).`); process.exit(1); }
     const alertas = [];
     if (info.deprecated) alertas.push(`CONDENADA PELO AUTOR (deprecated); recado dele: "${citacao(info.deprecated)}". Não instale sem entender por quê.`);
     const scripts = Object.keys(info.scripts || {}).filter((s) => /^(preinstall|install|postinstall)$/.test(s));
-    const extra = [];
+    const extra = nota ? [nota] : [];
     if (scripts.length) extra.push(`ATENÇÃO: roda script na instalação (${scripts.join(', ')}). É por aí que pacote malicioso age; leia o script antes ou instale com --ignore-scripts.`);
     extra.push(info.dist?.attestations ? 'Tem prova de origem (provenance): foi publicada por um processo de build verificável.' : 'Sem prova de origem (provenance). Não é prova de golpe, só menos uma garantia.');
     extra.push(`Mantenedores: ${(info.maintainers || d.maintainers || []).length}. Versões publicadas: ${Object.keys(d.versions || {}).length}.`);

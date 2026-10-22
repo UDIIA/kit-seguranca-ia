@@ -33,7 +33,9 @@ script na instalação (npm) e se veio com prova de origem. Sai com código 1 qu
 Antes de configurar, confira a versão de cada gerenciador (`npm -v`, `pnpm -v`, `uv --version`, `bun -v`,
 `yarn -v`). Abaixo da versão mínima a configuração não existe e, no uv antigo, gravar `"7 days"` quebra os comandos
 dele. Nesse caso, com o sim da pessoa, atualize primeiro o próprio gerenciador e só depois ligue a espera:
-`npm install -g npm@11`, `pnpm self-update`, `uv self update` (se o uv veio do instalador oficial; se veio do pip,
+`npm install -g npm@<versão>` (a versão sai de `idade-pacote.mjs npm npm@11`, que mostra a mais nova da faixa com 7
+dias ou mais; no Windows ela vai pra pasta do usuário e o atalho do Node passa a usá-la, sem administrador),
+`pnpm self-update`, `uv self update` (se o uv veio do instalador oficial; se veio do pip,
 `pip install -U uv`; do Homebrew, `brew upgrade uv`), `bun upgrade`. Yarn 1 pra yarn 4 é mudança de projeto: só com
 pedido da pessoa.
 

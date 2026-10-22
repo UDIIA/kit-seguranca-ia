@@ -81,7 +81,7 @@ const NODE_MIN = { 22: '22.23.4', 24: '24.22.1', 26: '26.12.1' };
       const age = runFixo('npm config get min-release-age').out;
       if (/^\d+$/.test(age) && Number(age) >= 1) add('ok', 'Pacotes', `npm ${v} espera ${age} dia(s) antes de instalar versão nova`);
       else add('atencao', 'Pacotes', `npm ${v} instala versão publicada há minutos`, 'O LiteLLM envenenado ficou no ar cerca de 1h45 em 21/10. Quem instalou nessa janela levou o vírus.', 'Rode `npm config set min-release-age 7` (versão nova só entra depois de 7 dias).');
-    } else add('atencao', 'Pacotes', `npm ${v} não tem trava de idade (ela chegou no npm 11.10)`, 'Sem a trava, qualquer `npm install` pega a versão publicada há minutos.', 'Atualize o npm (`npm install -g npm@11`) e rode `npm config set min-release-age 7`, ou use o pnpm, que já tem a trava.');
+    } else add('atencao', 'Pacotes', `npm ${v} não tem trava de idade (ela chegou no npm 11.10)`, 'Sem a trava, qualquer `npm install` pega a versão publicada há minutos.', 'Rode `idade-pacote.mjs npm npm@11` (skill pacote-novo-com-calma), instale a versão que ele indicar (`npm install -g npm@<versão>`; no Windows ela vai pra pasta do usuário e o atalho do Node passa a usá-la, sem administrador) e depois `npm config set min-release-age 7`.');
   }
   const pnpm = runFixo('pnpm --version');
   if (pnpm.ok) {
