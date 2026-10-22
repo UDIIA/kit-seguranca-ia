@@ -1,0 +1,394 @@
+#!/usr/bin/env node
+// checkup.mjs (kit-seguranca-ia 1.0.0, MIT)
+// Checkup local de segurança pra quem usa Claude Code ou Codex: versões com falha conhecida, o pacote envenenado de
+// 21/10/2026, arquivos de chave que um ladrão de credencial levaria, chave esquecida em histórico de conversa e de
+// terminal, e as travas que já estão ligadas.
+// Duas promessas, conferíveis no código: (1) nada sai desta máquina, o script não abre conexão de rede;
+// (2) nenhum valor de chave aparece na saída, só o tipo, a contagem e o começo mascarado.
+// Uso: node checkup.mjs [--pasta <dir>] [--sem-historico] [--tempo <segundos>] [--json] [--salvar <arquivo.md>]
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+const VERSAO = '1.0.0';
+const args = process.argv.slice(2);
+const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
+const HOME = os.homedir();
+const RAIZ = path.resolve(opt('--pasta', HOME));
+const TEMPO_TOTAL = Number(opt('--tempo', '90')) * 1000;
+const SEM_HIST = args.includes('--sem-historico');
+const WIN = process.platform === 'win32';
+const inicio = Date.now();
+const achados = [];
+const add = (nivel, area, titulo, detalhe = '', conserto = '') => achados.push({ nivel, area, titulo, detalhe, conserto });
+
+// ---------- utilidades ----------
+// Programa e argumentos vão separados, sem shell: nome de pasta com aspas, & ou $(...) não vira comando.
+function run(bin, argv = [], { timeout = 15000, input } = {}) {
+  try {
+    const r = spawnSync(bin, argv, { shell: false, windowsHide: true, timeout, encoding: 'utf8', input, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
+    return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim(), code: r.status };
+  } catch { return { ok: false, out: '', err: '', code: -1 }; }
+}
+// npm, pnpm, uv e bun no Windows costumam ser .cmd, que só abre por shell. Aqui o texto do comando é fixo, escrito
+// neste arquivo; nada que venha do disco entra nele.
+function runFixo(cmd, timeout = 15000) {
+  if (!WIN) { const [b, ...a] = cmd.split(' '); return run(b, a, { timeout }); }
+  try {
+    const r = spawnSync(cmd, { shell: true, windowsHide: true, timeout, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim(), code: r.status };
+  } catch { return { ok: false, out: '', err: '', code: -1 }; }
+}
+// Duração escrita como "7 days", "1 week", "168h" → dias (uv). Data fixa ou formato desconhecido → null.
+const diasDe = (t) => { const m = /^\s*(\d+(?:\.\d+)?)\s*(d|days?|w|weeks?|h|hours?)\s*$/i.exec(t || ''); if (!m) return null; const n = Number(m[1]); return /^w/i.test(m[2]) ? n * 7 : /^h/i.test(m[2]) ? n / 24 : n; };
+const cmp = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; };
+const existe = (p) => { try { fs.accessSync(p); return true; } catch { return false; } };
+const curto = (p) => p.startsWith(HOME) ? '~' + p.slice(HOME.length) : p;
+const lerInicio = (p, n = 65536) => { try { const fd = fs.openSync(p, 'r'); const b = Buffer.alloc(n); const k = fs.readSync(fd, b, 0, n, 0); fs.closeSync(fd); return b.subarray(0, k).toString('utf8'); } catch { return ''; } };
+const restante = () => TEMPO_TOTAL - (Date.now() - inicio);
+
+// ---------- 1. Node.js (correção de 21/10/2026: 10 falhas, a pior executa código pelo descompactador Brotli) ----------
+const NODE_MIN = { 22: '22.23.4', 24: '24.22.1', 26: '26.12.1' };
+{
+  const r = run('node', ['--version']);
+  const v = (r.out.match(/v?(\d+\.\d+\.\d+)/) || [])[1] || process.versions.node;
+  const maj = Number(v.split('.')[0]);
+  if (NODE_MIN[maj]) {
+    if (cmp(v, NODE_MIN[maj]) >= 0) add('ok', 'Node.js', `Node ${v} já tem a correção de 21/10/2026`);
+    else add('urgente', 'Node.js', `Node ${v} está sem a correção de 21/10/2026`, 'A atualização de 21/10 fechou 10 falhas; a mais grave deixa um arquivo compactado executar código no seu computador.', `Instale o Node ${NODE_MIN[maj]} ou mais novo (nodejs.org). Antes, veja o que está rodando com Node (no Windows o instalador fecha esses programas à força). Depois, confira com \`node --version\`.`);
+  } else {
+    add('urgente', 'Node.js', `Node ${v} é de uma linha que não recebe mais correção`, 'Só as linhas 22, 24 e 26 recebem correção de segurança.', 'Instale o Node 22.23.4, 24.22.1 ou 26.12.1 (ou mais novo) e confira com `node --version`.');
+  }
+}
+
+// ---------- 2. Trava de idade dos pacotes (versão recém-publicada espera alguns dias antes de entrar) ----------
+{
+  const npm = runFixo('npm --version');
+  if (npm.ok) {
+    const v = npm.out.split(/\s/)[0];
+    if (cmp(v, '11.10.0') >= 0) {
+      const age = runFixo('npm config get min-release-age').out;
+      if (/^\d+$/.test(age) && Number(age) >= 1) add('ok', 'Pacotes', `npm ${v} espera ${age} dia(s) antes de instalar versão nova`);
+      else add('atencao', 'Pacotes', `npm ${v} instala versão publicada há minutos`, 'O LiteLLM envenenado ficou no ar cerca de 1h45 em 21/10. Quem instalou nessa janela levou o vírus.', 'Rode `npm config set min-release-age 7` (versão nova só entra depois de 7 dias).');
+    } else add('atencao', 'Pacotes', `npm ${v} não tem trava de idade (ela chegou no npm 11.10)`, 'Sem a trava, qualquer `npm install` pega a versão publicada há minutos.', 'Atualize o npm (`npm install -g npm@11`) e rode `npm config set min-release-age 7`, ou use o pnpm, que já tem a trava.');
+  }
+  const pnpm = runFixo('pnpm --version');
+  if (pnpm.ok) {
+    const v = pnpm.out.split(/\s/)[0];
+    const age = runFixo('pnpm config get minimumReleaseAge').out || runFixo('pnpm config get minimum-release-age').out;
+    if (cmp(v, '10.16.0') < 0) add('atencao', 'Pacotes', `pnpm ${v} não tem trava de idade (ela chegou no pnpm 10.16)`, '', 'Atualize o pnpm e ligue `minimumReleaseAge: 10080` (minutos, 7 dias) na config global.');
+    else if (/^\d+$/.test(age) && Number(age) >= 1440) add('ok', 'Pacotes', `pnpm ${v} espera ${Math.round(Number(age) / 1440)} dia(s) antes de instalar versão nova`);
+    else add('atencao', 'Pacotes', `pnpm ${v} sem trava de idade de pelo menos 1 dia`, '', 'Ligue `minimumReleaseAge: 10080` (minutos, 7 dias) na config global do pnpm.');
+  }
+  const uv = runFixo('uv --version');
+  if (uv.ok) {
+    const cfgs = WIN ? [path.join(process.env.APPDATA || '', 'uv', 'uv.toml')] : [path.join(process.env.XDG_CONFIG_HOME || path.join(HOME, '.config'), 'uv', 'uv.toml')];
+    const valor = cfgs.map((c) => (lerInicio(c).match(/^\s*exclude-newer\s*=\s*["']([^"']+)["']/m) || [])[1]).find(Boolean);
+    const dias = diasDe(valor);
+    if (dias !== null && dias >= 1) add('ok', 'Pacotes', `${uv.out} espera ${dias} dia(s) antes de instalar versão nova`);
+    else if (valor && dias === null) add('info', 'Pacotes', `${uv.out} tem exclude-newer com data fixa (${valor})`, 'Data fixa congela tudo naquela data; nem correção de segurança entra.', 'Troque por `exclude-newer = "7 days"`.');
+    else add('atencao', 'Pacotes', `${uv.out} instala versão publicada há minutos`, valor ? `exclude-newer está em "${valor}".` : '', `Ponha em ${curto(cfgs[0])} a linha \`exclude-newer = "7 days"\` (uv 0.9.17 ou mais novo).`);
+  }
+  const bun = runFixo('bun --version');
+  if (bun.ok) {
+    const seg = Number((lerInicio(path.join(HOME, '.bunfig.toml')).match(/^\s*minimumReleaseAge\s*=\s*(\d+)/m) || [])[1] || 0);
+    if (seg >= 86400) add('ok', 'Pacotes', `bun ${bun.out} espera ${Math.round(seg / 86400)} dia(s) antes de instalar versão nova`);
+    else add('atencao', 'Pacotes', `bun ${bun.out} sem trava de idade de pelo menos 1 dia`, seg ? `minimumReleaseAge está em ${seg} segundos.` : '', 'No ~/.bunfig.toml: `[install]` e embaixo `minimumReleaseAge = 604800` (segundos, 7 dias).');
+  }
+}
+
+// ---------- 3. Pythons instalados e seus site-packages (LiteLLM 1.107.0, arquivos do vírus, certifi) ----------
+// O Python roda com -S -I e lê a sonda pela entrada padrão (nenhum arquivo temporário que outro usuário troque): não
+// carrega site-packages, então cook.pth e sitecustomize.py não disparam por causa deste checkup. Limite honesto: numa
+// máquina já comprometida, nada que rode nela prova que ela está limpa; este checkup procura as marcas conhecidas.
+const sitePackages = new Set();
+{
+  const sonda = [
+    'import sys, sysconfig, json, os',
+    'p = set()',
+    'for s in sysconfig.get_scheme_names():',
+    '    for k in ("purelib", "platlib"):',
+    '        try:',
+    '            x = sysconfig.get_path(k, s)',
+    '            if x and os.path.isdir(x): p.add(os.path.normcase(os.path.abspath(x)))',
+    '        except Exception: pass',
+    'print(json.dumps({"v": sys.version.split()[0], "exe": sys.executable, "paths": sorted(p)}))',
+  ].join('\n') + '\n';
+  const exes = new Set(['python', 'python3']);
+  if (WIN) { const r = run('py', ['-0p']); for (const l of r.out.split(/\r?\n/)) { const m = l.match(/([A-Za-z]:\\.*python(?:w)?\.exe)\s*$/i); if (m) exes.add(m[1]); } }
+  const vistos = new Set();
+  for (const exe of exes) {
+    const r = run(exe, ['-S', '-I', '-'], { input: sonda });
+    if (!r.ok) continue;
+    try {
+      const j = JSON.parse(r.out.split(/\r?\n/).pop());
+      if (vistos.has(j.exe.toLowerCase())) continue;
+      vistos.add(j.exe.toLowerCase());
+      add('info', 'Python', `Python ${j.v} em ${curto(j.exe)}`);
+      j.paths.forEach((p) => sitePackages.add(p));
+    } catch { /* saída estranha: pula */ }
+  }
+}
+
+// ---------- 4. Varredura de pastas: ambientes virtuais (site-packages) e arquivos .env ----------
+const envs = [];
+{
+  // OneDrive, Dropbox e iCloud entram: muita gente guarda projeto ali. Listar pasta não baixa arquivo da nuvem.
+  const PULA = new Set(['node_modules', '.git', 'AppData', 'Library', '.cache', '.npm', '.cargo', '.rustup', '.gradle', '.m2', 'Windows', 'Program Files', 'Program Files (x86)', '$Recycle.Bin', '.Trash', 'snap', 'Applications', '.vscode', '.cursor', '.nvm', 'go', '.docker']);
+  const limite = Date.now() + Math.min(30000, restante() / 3);
+  const fila = [[RAIZ, 0]];
+  let cortou = false;
+  while (fila.length) {
+    if (Date.now() > limite) { cortou = true; break; }
+    const [dir, prof] = fila.shift();
+    let itens;
+    try { itens = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const it of itens) {
+      const p = path.join(dir, it.name);
+      if (it.isDirectory() && !it.isSymbolicLink()) {
+        if (it.name === 'site-packages') { sitePackages.add(path.normalize(p)); continue; }
+        if (PULA.has(it.name) || (it.name.startsWith('.') && prof > 0 && !['.venv', '.env', '.config', '.local'].includes(it.name))) continue;
+        if (prof < 6) fila.push([p, prof + 1]);
+      } else if (it.isFile() && /^\.env(\..+)?$/i.test(it.name) && !/\.(example|sample|template|dist|defaults?|schema|enc|age|gpg|asc|vault|yarn)$/i.test(it.name)) envs.push(p);
+    }
+  }
+  if (cortou) add('info', 'Varredura', `Varredura de pastas parou no limite de tempo em ${curto(RAIZ)}`, 'O resto do checkup segue normal.', 'Pra varrer uma pasta de projetos específica: `node checkup.mjs --pasta <pasta>`.');
+}
+{
+  let litellmVisto = false;
+  const certifiVelhos = [];
+  for (const sp of sitePackages) {
+    let nomes;
+    try { nomes = fs.readdirSync(sp); } catch { continue; }
+    // dist-info (pip moderno) e egg-info (instalação antiga); versão com sufixo local (1.107.0+algo) também conta.
+    const lite = nomes.find((n) => /^litellm-\d[^-]*(?:-py[\d.]+)?\.(?:dist|egg)-info$/i.test(n));
+    if (lite) {
+      litellmVisto = true;
+      let v = (lite.match(/^litellm-(\d+(?:\.\d+)*)/i) || [])[1] || '?';
+      const meta = lerInicio(path.join(sp, lite, 'METADATA'), 4096) || lerInicio(path.join(sp, lite, 'PKG-INFO'), 4096) || lerInicio(path.join(sp, lite), 4096);
+      const vm = (meta.match(/^Version:\s*(\d+(?:\.\d+)*)/m) || [])[1];
+      const envenenada = (x) => x === '1.107.0';
+      if (vm && envenenada(vm)) v = vm;
+      if (envenenada(v)) add('urgente', 'Pacote envenenado', `LiteLLM 1.107.0 instalado em ${curto(sp)}`, 'Essa é a versão que roubava senha do navegador, chave SSH, chave de nuvem e de IA, e baixava código novo a cada hora.', 'Siga a skill vazou-e-agora AGORA: troque todas as chaves deste computador, depois `pip install "litellm!=1.107.0"` ou remova o ambiente. Ver docs.litellm.ai/blog/security-incident-oct-21-2026.');
+      else add('ok', 'Pacote envenenado', `LiteLLM ${v} em ${curto(sp)} (versão fora do ataque de 21/10)`);
+    }
+    for (const f of ['cook.pth', 'cook.py']) if (nomes.includes(f)) add('urgente', 'Pacote envenenado', `Arquivo do vírus do LiteLLM (${f}) em ${curto(sp)}`, 'Esse arquivo roda sozinho toda vez que o Python abre.', 'Assuma que as chaves desta máquina foram levadas: skill vazou-e-agora. Depois apague o ambiente inteiro e recrie.');
+    if (nomes.includes('sitecustomize.py') && /cook|privcollect|remote_code_loader|pythonclient-test/.test(lerInicio(path.join(sp, 'sitecustomize.py')))) add('urgente', 'Pacote envenenado', `sitecustomize.py com assinatura do vírus em ${curto(sp)}`, '', 'Skill vazou-e-agora, depois recriar o ambiente.');
+    const cert = nomes.find((n) => /^certifi-[\d.]+\.dist-info$/i.test(n));
+    if (cert && !/[\\/]pkgs[\\/]/.test(sp)) { const v = cert.replace(/^certifi-/i, '').replace(/\.dist-info$/i, ''); if (cmp(v, '2026.10.19') < 0) certifiVelhos.push(`${v} em ${curto(sp)}`); }
+  }
+  if (!litellmVisto) add('ok', 'Pacote envenenado', 'LiteLLM não encontrado nos Pythons e ambientes varridos');
+  if (certifiVelhos.length) add('atencao', 'Certificados', `certifi antigo em ${certifiVelhos.length} lugar(es)`, `Lista de certificados de antes de 19/10/2026 ainda confia em certificados revogados. ${certifiVelhos.slice(0, 3).join('; ')}${certifiVelhos.length > 3 ? '…' : ''}`, 'Em cada ambiente: `pip install -U certifi` (ou `uv pip install -U certifi`).');
+}
+
+// ---------- 5. Marcas que o vírus deixa na pasta temporária ----------
+{
+  const temps = [...new Set([os.tmpdir(), '/tmp', '/var/tmp'].filter(existe))];
+  for (const t of temps) {
+    let nomes = [];
+    try { nomes = fs.readdirSync(t); } catch {}
+    if (nomes.includes('.pc_once_72129118c59f5636c0bb')) add('urgente', 'Pacote envenenado', `Marca de roubo concluído em ${t}`, 'O ladrão do LiteLLM grava esse arquivo depois de mandar os dados embora.', 'Trate todas as chaves e senhas deste computador como roubadas: skill vazou-e-agora, na ordem dela.');
+    if (nomes.includes('remote_code_loader.lock')) add('urgente', 'Pacote envenenado', `Carregador remoto do vírus em ${t}`, 'Esse arquivo indica o pedaço que busca código novo a cada hora.', 'Desligue a máquina da rede, troque as chaves de outro aparelho (skill vazou-e-agora) e reinstale o ambiente Python.');
+    const pastas = nomes.filter((n) => /^\.pc_(sq|e)_/.test(n));
+    if (pastas.length) add('urgente', 'Pacote envenenado', `Pastas temporárias do vírus em ${t} (${pastas.length})`, '', 'Skill vazou-e-agora.');
+  }
+}
+
+// ---------- 6. Docker ----------
+{
+  const r = run('docker', ['images', '--format', '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}'], { timeout: 20000 });
+  if (r.ok) {
+    const lite = r.out.split(/\r?\n/).filter((l) => /litellm/i.test(l));
+    for (const l of lite) {
+      const [img, quando] = l.split('|');
+      if (/:v?1\.107\.0\b/.test(img) || (/:(latest|main-latest|main-stable)$/.test(img) && /^2026-10-21/.test(quando || ''))) add('urgente', 'Pacote envenenado', `Imagem Docker suspeita: ${img}`, 'As imagens do LiteLLM 1.107.0 (e latest/main-latest/main-stable baixadas em 21/10) vieram com o vírus.', 'Pare os containers dessa imagem, apague a imagem, troque as chaves que ela usava (skill vazou-e-agora).');
+      else add('info', 'Docker', `Imagem do LiteLLM: ${img} (fora da janela do ataque)`);
+    }
+  }
+}
+
+// ---------- 7. PHP local (PHP2Shell: correção em 21/10/2026) ----------
+{
+  const PHP_MIN = { '8.5': '8.5.12', '8.4': '8.4.27', '8.3': '8.3.36', '8.2': '8.2.35' };
+  const r = run('php', ['-v']);
+  const v = (r.out.match(/PHP (\d+\.\d+\.\d+)/) || [])[1];
+  if (v) {
+    const ramo = v.split('.').slice(0, 2).join('.');
+    if (PHP_MIN[ramo] && cmp(v, PHP_MIN[ramo]) >= 0) add('ok', 'PHP', `PHP ${v} já tem a correção do PHP2Shell`);
+    else if (PHP_MIN[ramo]) add('urgente', 'PHP', `PHP ${v} sem a correção do PHP2Shell`, 'Um pedido web montado sob medida executa código no servidor, sem login.', `Atualize pra ${PHP_MIN[ramo]} ou mais novo e reinicie o PHP-FPM ou o servidor web.`);
+    else add('urgente', 'PHP', `PHP ${v} é de um ramo sem correção completa`, '', 'Suba pra 8.2.35, 8.3.36, 8.4.27 ou 8.5.12 (ou mais novo).');
+  }
+}
+
+// ---------- 8. Arquivos com chave que um ladrão de credencial levaria (só presença; nada é impresso) ----------
+const emRisco = [];
+{
+  const P = (...x) => path.join(HOME, ...x);
+  const lista = [
+    ['Claude Code (login)', P('.claude', '.credentials.json')], ['Codex (login)', P('.codex', 'auth.json')],
+    ['OpenCode (chaves)', P('.local', 'share', 'opencode', 'auth.json')], ['OpenCode (chaves)', path.join(process.env.XDG_DATA_HOME || '', 'opencode', 'auth.json')],
+    ['OpenCode (chaves)', path.join(process.env.LOCALAPPDATA || '', 'opencode', 'auth.json')], ['GitHub CLI (token)', P('.config', 'gh', 'hosts.yml')],
+    ['GitHub CLI (token)', path.join(process.env.APPDATA || '', 'GitHub CLI', 'hosts.yml')], ['PyPI (token)', P('.pypirc')],
+    ['AWS', P('.aws', 'credentials')], ['Google Cloud', P('.config', 'gcloud', 'application_default_credentials.json')],
+    ['Google Cloud', path.join(process.env.APPDATA || '', 'gcloud', 'application_default_credentials.json')],
+    ['Azure', P('.azure', 'msal_token_cache.json')], ['Docker (registros)', P('.docker', 'config.json')],
+    ['Kubernetes', P('.kube', 'config')], ['Gemini CLI', P('.gemini', 'oauth_creds.json')], ['Continue', P('.continue', 'config.json')],
+    ['Cursor (MCP)', P('.cursor', 'mcp.json')], ['Aider', P('.aider.conf.yml')],
+  ];
+  for (const [rot, p] of lista) if (p && path.isAbsolute(p) && existe(p) && !emRisco.some((x) => x[1] === p)) emRisco.push([rot, p]);
+  const npmrc = P('.npmrc');
+  if (existe(npmrc)) { emRisco.push(['npm', npmrc]); if (/_authToken\s*=/.test(lerInicio(npmrc))) add('atencao', 'Chaves em arquivo', 'Token do npm em texto no ~/.npmrc', 'Foi um dos arquivos que o vírus do LiteLLM levava.', 'Use token de curta duração ou o login pelo navegador (`npm login --auth-type=web`) e apague a linha _authToken.'); }
+  const cj = P('.claude.json');
+  if (existe(cj)) {
+    try {
+      const j = JSON.parse(fs.readFileSync(cj, 'utf8'));
+      const servidores = [j.mcpServers, ...Object.values(j.projects || {}).map((x) => x && x.mcpServers)].filter(Boolean);
+      let comChave = 0;
+      for (const s of servidores) for (const cfg of Object.values(s)) {
+        const env = cfg && cfg.env ? Object.entries(cfg.env) : [];
+        const hdr = cfg && cfg.headers ? Object.entries(cfg.headers) : [];
+        if ([...env, ...hdr].some(([k, v]) => typeof v === 'string' && v.length >= 20 && !/^\$\{/.test(v) && /(key|token|secret|auth|pass)/i.test(k))) comChave++;
+      }
+      if (comChave) add('atencao', 'Chaves em arquivo', `${comChave} servidor(es) MCP com chave escrita direto no ~/.claude.json`, 'Quem lê esse arquivo leva as chaves junto.', 'Troque o valor por variável de ambiente (`"${NOME}"`) e guarde a chave num cofre (skill segredo-fora-do-chat).');
+    } catch {}
+  }
+  const ssh = P('.ssh');
+  if (existe(ssh)) {
+    let semSenha = 0, total = 0;
+    for (const n of fs.readdirSync(ssh)) {
+      if (!/^id_/.test(n) || n.endsWith('.pub')) continue;
+      const t = lerInicio(path.join(ssh, n), 4096);
+      if (!/PRIVATE KEY/.test(t)) continue;
+      total++;
+      if (/BEGIN OPENSSH PRIVATE KEY/.test(t)) {
+        const b64 = t.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+        const bin = Buffer.from(b64.slice(0, 200), 'base64');
+        const off = 'openssh-key-v1\0'.length;
+        try { const len = bin.readUInt32BE(off); if (bin.subarray(off + 4, off + 4 + len).toString() === 'none') semSenha++; } catch { /* formato inesperado: não conta */ }
+      } else if (!/ENCRYPTED/.test(t)) semSenha++;
+    }
+    if (total) { emRisco.push(['Chaves SSH', ssh]); if (semSenha) add('atencao', 'Chaves em arquivo', `${semSenha} de ${total} chave(s) SSH sem senha`, 'Chave SSH sem senha funciona na mão de quem copiar o arquivo.', 'Ponha senha: `ssh-keygen -p -f ~/.ssh/<arquivo>`.'); }
+  }
+  if (emRisco.length) add('info', 'Chaves em arquivo', `${emRisco.length} arquivo(s) com credencial nesta máquina (o que um ladrão de credencial levaria)`, emRisco.map(([r, p]) => `${r}: ${curto(p)}`).join('; '), 'Nada a fazer se a máquina está limpa. Se algum item URGENTE apareceu acima, cada um desses vira uma chave pra trocar.');
+}
+
+// ---------- 9. Arquivos .env: versionados no git? ----------
+{
+  const raizGit = (p) => { let d = path.dirname(p); for (let i = 0; i < 12; i++) { if (existe(path.join(d, '.git'))) return d; const up = path.dirname(d); if (up === d) break; d = up; } return null; };
+  let versionados = 0, foraIgnore = 0;
+  const exemplos = [];
+  for (const e of envs.slice(0, 60)) {
+    const g = raizGit(e);
+    if (!g) continue;
+    const rel = path.relative(g, e).split(path.sep).join('/');
+    // core.fsmonitor desligado: a config de um repositório baixado da internet não roda programa nenhum aqui.
+    const git = (...a) => run('git', ['-c', 'core.fsmonitor=false', '-C', g, ...a]);
+    if (git('ls-files', '--error-unmatch', '--', rel).ok) { versionados++; exemplos.push(curto(e)); }
+    else if (!git('check-ignore', '-q', '--', rel).ok) foraIgnore++;
+  }
+  if (versionados) add('urgente', 'Chaves em arquivo', `${versionados} arquivo(s) .env dentro do git (versionados)`, `Se esse repositório já subiu pro GitHub, as chaves estão no histórico dele. ${exemplos.slice(0, 3).join('; ')}`, 'Troque as chaves desses arquivos (skill vazou-e-agora), depois `git rm --cached <arquivo>` e ponha `.env*` no .gitignore. Apagar o arquivo não apaga o histórico; trocar a chave resolve.');
+  if (foraIgnore) add('atencao', 'Chaves em arquivo', `${foraIgnore} arquivo(s) .env em repositório git sem estar no .gitignore`, 'Um `git add .` distraído manda a chave pro repositório.', 'Adicione `.env*` e `!.env.example` no .gitignore desses repositórios.');
+  if (envs.length && !versionados && !foraIgnore) add('ok', 'Chaves em arquivo', `${envs.length} arquivo(s) .env encontrados, nenhum versionado no git`);
+}
+
+// ---------- 10. Chave esquecida em histórico de conversa (Claude Code, Codex) e de terminal ----------
+const PADROES = [
+  ['Anthropic', /sk-ant-(?:api03|admin01)-[A-Za-z0-9_-]{80,}/g], ['OpenAI', /sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}/g],
+  ['OpenAI (formato antigo)', /\bsk-[A-Za-z0-9]{48}\b/g], ['OpenRouter', /sk-or-v1-[0-9a-f]{64}/g], ['Google (Gemini, Cloud)', /AIza[0-9A-Za-z_-]{35}/g],
+  ['GitHub', /\b(?:ghp|gho|ghs|ghu|ghr)_[A-Za-z0-9]{36}\b|\bgithub_pat_[A-Za-z0-9_]{70,}/g], ['AWS', /\bAKIA[0-9A-Z]{16}\b/g],
+  ['Slack', /\bxox[abprs]-[A-Za-z0-9-]{20,}/g], ['Stripe', /\b[sr]k_live_[0-9A-Za-z]{20,}/g], ['Groq', /\bgsk_[A-Za-z0-9]{50,}/g],
+  ['Hugging Face', /\bhf_[A-Za-z0-9]{34,}/g], ['npm', /\bnpm_[A-Za-z0-9]{36}\b/g],
+];
+const ehFalso = (v) => /(.)\1{7,}/.test(v) || /(?:x{6,}|0{8,}|abcdef|example|placeholder|your[_-]?key|fake|dummy|sample)/i.test(v);
+// Mostra o prefixo fixo do formato e só 4 caracteres do miolo: dá pra reconhecer a chave sem entregá-la.
+const PREFIXO = /^(sk-ant-(?:api03|admin01)-|sk-(?:proj|svcacct|admin)-|sk-or-v1-|AIza|gh[pousr]_|github_pat_|AKIA|xox[abprs]-|[sr]k_live_|gsk_|hf_|npm_|sk-)/;
+const mascara = (v) => { const p = (v.match(PREFIXO) || [''])[0]; return `${v.slice(0, p.length + 4)}… (${v.length} caracteres)`; };
+async function varreHistorico() {
+  const alvos = [];
+  const anda = (d, filtro, prof = 0) => { if (prof > 6) return; let it; try { it = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } for (const x of it) { const p = path.join(d, x.name); if (x.isDirectory()) anda(p, filtro, prof + 1); else if (filtro.test(x.name)) alvos.push(p); } };
+  anda(path.join(HOME, '.claude', 'projects'), /\.jsonl$/);
+  anda(path.join(HOME, '.codex', 'sessions'), /\.jsonl$/);
+  for (const f of [path.join(HOME, '.codex', 'history.jsonl'), path.join(HOME, '.bash_history'), path.join(HOME, '.zsh_history'), path.join(HOME, '.python_history'), path.join(HOME, '.local', 'share', 'fish', 'fish_history'), path.join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt')]) if (existe(f)) alvos.push(f);
+  alvos.sort((a, b) => { try { return fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs; } catch { return 0; } });
+  const porTipo = new Map();
+  let lidos = 0, bytes = 0, chavePrivada = 0;
+  const prazo = Date.now() + Math.max(5000, restante() - 3000);
+  for (const f of alvos) {
+    if (Date.now() > prazo) break;
+    let resto = '';
+    try {
+      for await (const pedaco of fs.createReadStream(f, { encoding: 'utf8', highWaterMark: 1 << 20 })) {
+        const t = resto + pedaco;
+        for (const [tipo, re] of PADROES) {
+          re.lastIndex = 0;
+          for (const m of t.matchAll(re)) {
+            const v = m[0];
+            if (ehFalso(v) || (tipo === 'OpenAI (formato antigo)' && /^sk-ant/.test(v))) continue;
+            if (!porTipo.has(tipo)) porTipo.set(tipo, { valores: new Set(), arquivos: new Set() });
+            const o = porTipo.get(tipo); o.valores.add(v); o.arquivos.add(f);
+          }
+        }
+        chavePrivada += (t.match(/-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[A-Za-z0-9+/=\s\\n]{40}/g) || []).length;
+        resto = t.slice(-300);
+        bytes += pedaco.length;
+        if (Date.now() > prazo) break;
+      }
+      lidos++;
+    } catch { /* arquivo preso ou sumiu: pula */ }
+  }
+  const parcial = lidos < alvos.length;
+  if (!alvos.length) { add('info', 'Histórico', 'Nenhum histórico de conversa do Claude Code ou do Codex encontrado'); return; }
+  const mb = (bytes / 1048576).toFixed(0);
+  if (!porTipo.size && !chavePrivada) add('ok', 'Histórico', `Nenhuma chave em texto em ${lidos} arquivo(s) de histórico (${mb} MB)${parcial ? `; parcial: ${alvos.length - lidos} arquivo(s) mais antigos ficaram fora pelo limite de tempo` : ''}`);
+  for (const [tipo, o] of porTipo) {
+    const mascarados = [...o.valores].slice(0, 3).map(mascara);
+    add('atencao', 'Histórico', `${o.valores.size} chave(s) ${tipo} em texto no histórico (${o.arquivos.size} arquivo(s))`, `Começo mascarado: ${mascarados.join('; ')}. Exemplos de arquivo: ${[...o.arquivos].slice(0, 2).map(curto).join('; ')}.`, 'Se alguma dessas chaves ainda está em uso, troque (skill vazou-e-agora). Histórico guardado no disco é exatamente o que um ladrão de credencial copia.');
+  }
+  if (chavePrivada) add('atencao', 'Histórico', `${chavePrivada} chave(s) privada(s) inteira(s) aparecem no histórico`, '', 'Gere chave nova e troque onde ela é usada.');
+  if (parcial && (porTipo.size || chavePrivada)) add('info', 'Histórico', `Leitura parcial: ${lidos} de ${alvos.length} arquivos (${mb} MB) dentro do limite de tempo`, '', 'Pra ler tudo: `node checkup.mjs --tempo 600`.');
+}
+if (!SEM_HIST) await varreHistorico();
+
+// ---------- 11. Travas já ligadas ----------
+{
+  const s = lerInicio(path.join(HOME, '.claude', 'settings.json'), 1 << 20);
+  const ch = lerInicio(path.join(HOME, '.codex', 'hooks.json'), 1 << 20);
+  if (/tripwires/.test(s) || /tripwires/.test(ch)) add('ok', 'Travas', 'tripwires ligado (barra leitura de arquivo de chave antes de acontecer)');
+  else if (/PreToolUse/.test(s)) add('info', 'Travas', 'Há hook PreToolUse no Claude Code; confira se algum barra a leitura de .env e arquivos de chave');
+  else add('atencao', 'Travas', 'Nenhuma trava automática antes das ferramentas do agente', 'Regra escrita no CLAUDE.md é conselho; hook é trava que roda antes do comando e pode dizer não.', 'Veja o passo opcional do INSTALAR.md (tripwires, código aberto).');
+  const md = lerInicio(path.join(HOME, '.claude', 'CLAUDE.md'), 1 << 20) + lerInicio(path.join(HOME, '.codex', 'AGENTS.md'), 1 << 20);
+  if (/kit-seguranca-ia/.test(md)) add('ok', 'Travas', 'Regras do kit presentes no CLAUDE.md ou AGENTS.md');
+  else add('atencao', 'Travas', 'Regras de segurança do kit ainda não estão no CLAUDE.md nem no AGENTS.md', '', 'Siga o passo 3 do INSTALAR.md.');
+}
+
+// ---------- relatório ----------
+const ORDEM = { urgente: 0, atencao: 1, ok: 2, info: 3 };
+const ROT = { urgente: 'URGENTE', atencao: 'ATENÇÃO', ok: 'OK', info: 'INFO' };
+achados.sort((a, b) => ORDEM[a.nivel] - ORDEM[b.nivel]);
+const conta = (n) => achados.filter((a) => a.nivel === n).length;
+const quando = new Date().toLocaleString('pt-BR');
+if (args.includes('--json')) {
+  console.log(JSON.stringify({ kit: 'kit-seguranca-ia', versao: VERSAO, quando, maquina: `${process.platform} ${process.arch}`, segundos: (Date.now() - inicio) / 1000, achados }, null, 2));
+} else {
+  const L = [];
+  L.push(`# Checkup de segurança (kit-seguranca-ia ${VERSAO})`, '');
+  L.push(`${quando} · ${process.platform} ${process.arch} · ${((Date.now() - inicio) / 1000).toFixed(1)} s · pasta varrida: ${curto(RAIZ)}`);
+  L.push('Nada saiu desta máquina. Nenhum valor de chave aparece neste relatório.', '');
+  L.push(`Resumo: ${conta('urgente')} URGENTE · ${conta('atencao')} ATENÇÃO · ${conta('ok')} OK`, '');
+  for (const a of achados) {
+    L.push(`- [${ROT[a.nivel]}] ${a.area}: ${a.titulo}`);
+    if (a.detalhe) L.push(`  ${a.detalhe}`);
+    if (a.conserto) L.push(`  O que fazer: ${a.conserto}`);
+  }
+  const texto = L.join('\n');
+  console.log(texto);
+  // Só grava .md, e só sobrescreve relatório anterior do próprio checkup (nunca outro arquivo).
+  const salvar = opt('--salvar', null);
+  if (salvar) {
+    const alvo = path.resolve(salvar);
+    if (!/\.md$/i.test(alvo)) console.log('\n(--salvar só aceita arquivo .md; relatório não salvo)');
+    else if (existe(alvo) && !lerInicio(alvo, 64).startsWith('# Checkup de segurança')) console.log(`\n(${alvo} já existe e não é um relatório do checkup; relatório não salvo)`);
+    else { fs.writeFileSync(alvo, texto + '\n'); console.log(`\n(relatório salvo em ${alvo})`); }
+  }
+}
