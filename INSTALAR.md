@@ -20,10 +20,10 @@ faz e quais acessam a internet. O esperado é:
 - `testa-chave.mjs`: só o provedor da chave testada (Anthropic, OpenAI, Google, GitHub...), rota de leitura.
 - `idade-pacote.mjs`: só `registry.npmjs.org` e `pypi.org`.
 
-**Ponto de parada.** Mostre esse resumo à pessoa numa mensagem, antes de copiar qualquer arquivo, e espere ela dizer
-que pode instalar. Se ela já disse no pedido que pode seguir sem perguntar, escreva o resumo do mesmo jeito, numa
-mensagem própria, e só depois siga: é a prova de que o kit foi lido antes de entrar no computador dela. Se o código
-fizer qualquer coisa diferente da lista acima, pare e conte.
+**Ponto de parada.** Termine a sua resposta aqui: o resumo, uma linha por script, e a pergunta "Posso instalar?".
+Não copie nada nesta mesma resposta. Siga do passo 1 quando a pessoa responder sim. Isso vale mesmo quando ela pediu
+pra seguir sem perguntar: a pergunta custa uma resposta e é a prova de que o kit foi lido antes de entrar no
+computador dela. Se o código fizer qualquer coisa diferente da lista acima, conte isso no lugar da pergunta.
 
 ## Passo 1. Conferir o Node
 
