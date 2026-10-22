@@ -20,7 +20,8 @@ faz e quais acessam a internet. O esperado é:
 - `testa-chave.mjs`: só o provedor da chave testada (Anthropic, OpenAI, Google, GitHub...), rota de leitura.
 - `idade-pacote.mjs`: só `registry.npmjs.org` e `pypi.org`.
 
-Se o código fizer qualquer coisa diferente disso, pare e conte. Ler antes de instalar vale pra este kit também.
+Escreva esse resumo pra pessoa antes do passo 1, mesmo quando ela pediu pra seguir sem perguntar: é a prova de que
+o kit foi lido antes de entrar no computador dela. Se o código fizer qualquer coisa diferente disso, pare e conte.
 
 ## Passo 1. Conferir o Node
 
@@ -105,8 +106,9 @@ autorização por escrito pra testar). Só então rode a skill `sonda-do-site` c
 
 Apague a pasta temporária do passo 0 (as skills já estão copiadas).
 
-Diga à pessoa, em uma lista curta: o que foi instalado e onde, o que o checkup achou, o que ainda depende dela, o
-que foi medido e o que ficou de fora (antivírus, atualização do sistema, senha forte com verificação em duas etapas).
+Diga à pessoa, em uma lista curta: o que cada script faz e qual acessa a internet (o resumo do passo 0), o que foi
+instalado e onde, o que o checkup achou, o que ainda depende dela, o que foi medido e o que ficou de fora (antivírus,
+atualização do sistema, senha forte com verificação em duas etapas).
 Evite declarar o computador seguro.
 
 Ensine a desinstalar: apagar as cinco pastas de skill (em `~/.claude/skills/`, `~/.agents/skills/` e, se usou,
